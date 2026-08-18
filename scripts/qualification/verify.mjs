@@ -155,6 +155,16 @@ if (!workflow.includes("--allowlist deploy/qualification/trivy-secret-allowlist.
 if ((workflow.match(/--timeout 20m/g) ?? []).length !== 2) {
   throw new Error("published-image Trivy scan and SBOM export must each use the bounded timeout");
 }
+for (const required of [
+  'while [ "$attempt" -le 3 ]; do',
+  'rm -f "$final" "$temp"',
+  'test -s "$temp"',
+  'mv "$temp" "$final"',
+  'if [ "$attempt" -eq 3 ]; then',
+]) {
+  if ((workflow.match(new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length !== 2)
+    throw new Error(`published-image Trivy retry contract is missing ${required}`);
+}
 if (!workflow.includes(`printf '%s' '"127.0.0.1:3000"' > "$smoke_dir/allowed-hostnames"`)) {
   throw new Error("runtime smoke must provide ALLOWED_HOSTNAMES as a JSON string element");
 }

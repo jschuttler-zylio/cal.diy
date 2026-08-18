@@ -214,14 +214,32 @@ jobs:
           mkdir -p qualification-artifacts/scans/raw "$RUNNER_TEMP/trivy-cache"
           for platform in linux/amd64 linux/arm64; do
             architecture="${platform#linux/}"
-            docker run --rm --platform linux/amd64 \
-              -e TRIVY_USERNAME -e TRIVY_PASSWORD \
-              -v "$PWD/qualification-artifacts/scans/raw:/out" \
-              -v "$RUNNER_TEMP/trivy-cache:/cache" \
-              "$TRIVY_IMAGE" image --cache-dir /cache --timeout 20m --skip-version-check \
-              --image-src remote --platform "$platform" --scanners vuln,secret \
-              --format json --exit-code 0 --output "/out/image-${architecture}.json" \
-              "${IMAGE}@${{ steps.index.outputs.digest }}"
+            final="$PWD/qualification-artifacts/scans/raw/image-${architecture}.json"
+            temp="${final}.tmp"
+            rm -f "$final" "$temp"
+            attempt=1
+            while [ "$attempt" -le 3 ]; do
+              if docker run --rm --platform linux/amd64 \
+                -e TRIVY_USERNAME -e TRIVY_PASSWORD \
+                -v "$PWD/qualification-artifacts/scans/raw:/out" \
+                -v "$RUNNER_TEMP/trivy-cache:/cache" \
+                "$TRIVY_IMAGE" image --cache-dir /cache --timeout 20m --skip-version-check \
+                --image-src remote --platform "$platform" --scanners vuln,secret \
+                --format json --exit-code 0 --output "/out/image-${architecture}.json.tmp" \
+                "${IMAGE}@${{ steps.index.outputs.digest }}"; then
+                if test -s "$temp"; then
+                  mv "$temp" "$final"
+                  break
+                fi
+              fi
+              rm -f "$temp"
+              if [ "$attempt" -eq 3 ]; then
+                echo "Trivy remote scan failed after three attempts for $platform" >&2
+                exit 1
+              fi
+              sleep "$((attempt * 10))"
+              attempt=$((attempt + 1))
+            done
           done
       - name: Export a downloadable CycloneDX SBOM
         env:
@@ -230,14 +248,32 @@ jobs:
         run: |
           set -eu
           mkdir -p qualification-artifacts/sbom "$RUNNER_TEMP/trivy-cache"
-          docker run --rm --platform linux/amd64 \
-            -e TRIVY_USERNAME -e TRIVY_PASSWORD \
-            -v "$PWD/qualification-artifacts/sbom:/out" \
-            -v "$RUNNER_TEMP/trivy-cache:/cache" \
-            "$TRIVY_IMAGE" image --cache-dir /cache --timeout 20m --skip-version-check \
-            --image-src remote --format cyclonedx \
-            --output /out/sbom.cdx.json \
-            "${IMAGE}@${{ steps.index.outputs.digest }}"
+          final="$PWD/qualification-artifacts/sbom/sbom.cdx.json"
+          temp="${final}.tmp"
+          rm -f "$final" "$temp"
+          attempt=1
+          while [ "$attempt" -le 3 ]; do
+            if docker run --rm --platform linux/amd64 \
+              -e TRIVY_USERNAME -e TRIVY_PASSWORD \
+              -v "$PWD/qualification-artifacts/sbom:/out" \
+              -v "$RUNNER_TEMP/trivy-cache:/cache" \
+              "$TRIVY_IMAGE" image --cache-dir /cache --timeout 20m --skip-version-check \
+              --image-src remote --format cyclonedx \
+              --output /out/sbom.cdx.json.tmp \
+              "${IMAGE}@${{ steps.index.outputs.digest }}"; then
+              if test -s "$temp"; then
+                mv "$temp" "$final"
+                break
+              fi
+            fi
+            rm -f "$temp"
+            if [ "$attempt" -eq 3 ]; then
+              echo "Trivy remote SBOM export failed after three attempts" >&2
+              exit 1
+            fi
+            sleep "$((attempt * 10))"
+            attempt=$((attempt + 1))
+          done
       - name: Collect raw evidence before applying scan policy
         run: |
           cp /tmp/secret-scan/secret-scan.json qualification-artifacts/scans/raw/source-secret.json

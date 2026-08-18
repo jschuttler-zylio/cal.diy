@@ -63,6 +63,10 @@ assembles platform-labelled policy evidence. Raw JSON and SBOM output are
 collected before policy evaluation. The published-image scan and SBOM export
 each have a bounded 20-minute Trivy analysis timeout; reaching that deadline
 fails the workflow rather than suppressing scan coverage.
+Remote transport failures are retried at most three times for each platform
+scan and for the SBOM export. Each attempt writes a fresh temporary file and
+only atomically publishes a non-empty result; exhaustion remains a terminal
+workflow failure before raw evidence or policy enforcement can proceed.
 The read-only source secret job must pass before either native image build may
 publish, and each job receives only its required GitHub token permissions.
 Malformed output, any HIGH/CRITICAL vulnerability, or any unexpected secret
