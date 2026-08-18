@@ -74,6 +74,10 @@ finding blocks the image manifest, while the raw reports remain downloadable
 for review. The only secret exceptions are inherited upstream documentation/test
 fixtures matched by exact path, rule count, and frozen file hash in
 `trivy-secret-allowlist.json`; a changed or additional finding fails closed.
+The builder runs those tests before compile, but strips `apps/web/playwright`
+from the runtime handoff stage: E2E sources are not runtime dependencies and
+must not turn those reviewed source-only fixture exceptions into embedded image
+secrets.
 
 The pinned Debian base must provide `setpriv`; the image build fails immediately
 if it does not. `setpriv` drops the root bootstrap process to `node` after URL

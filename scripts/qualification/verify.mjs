@@ -222,6 +222,10 @@ if (!dockerfile.includes("RUN command -v setpriv"))
   throw new Error("pinned base does not prove its privilege-drop primitive");
 if (!dockerfile.includes("COPY --from=builder-two --chown=node:node /calcom ./"))
   throw new Error("runtime tree is not owned by the non-root web user");
+const e2eSourceRemoval = dockerfile.indexOf("RUN rm -rf apps/web/playwright");
+const runtimeHandoff = dockerfile.indexOf("COPY --from=builder-two --chown=node:node /calcom ./");
+if (e2eSourceRemoval === -1 || e2eSourceRemoval > runtimeHandoff)
+  throw new Error("runtime image retains upstream E2E fixture source that violates embedded-secret policy");
 for (const required of [
   "chown -R root:root /calcom/apps/web/.next /calcom/apps/web/public",
   "find /calcom/apps/web/.next /calcom/apps/web/public -type d -exec chmod 0755 {} +",
