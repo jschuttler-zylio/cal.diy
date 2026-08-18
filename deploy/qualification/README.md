@@ -24,7 +24,9 @@ to `NEXT_PUBLIC_DISABLE_SIGNUP=true`.
 Every Docker build stage uses the same verified multi-architecture Node 20.20.2
 Bookworm manifest digest. `yarn install --immutable` rejects any lockfile
 change; the builder receives the complete declared workspace graph so a
-partial Docker context cannot silently rewrite the lock. The frozen
+partial Docker context cannot silently rewrite the lock. Each native build
+runs the focused Tasker retention and failure-redaction tests before compiling
+the web application. The frozen
 source-image schema has no base-image field, so the OCI
 BuildKit provenance and CycloneDX SBOM artifacts are the authoritative record
 of this base digest and its resolved platform descriptors.

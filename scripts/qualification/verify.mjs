@@ -112,6 +112,9 @@ if (nodeStages.length !== 3 || nodeStages.some((line) => !line.includes("node:20
   throw new Error("every Node Docker stage must use the verified immutable multi-architecture digest");
 }
 if (!dockerfile.includes("RUN yarn install --immutable")) throw new Error("Docker build does not enforce the committed Yarn lockfile");
+if (!dockerfile.includes("RUN yarn vitest run packages/features/tasker/internal-tasker.test.ts packages/features/tasker/task-processor.test.ts")) {
+  throw new Error("Docker build does not execute the qualification Tasker tests");
+}
 if (!dockerfile.includes("COPY apps ./apps") || !dockerfile.includes("COPY example-apps ./example-apps")) {
   throw new Error("immutable install does not receive the complete declared workspace graph");
 }

@@ -44,6 +44,7 @@ COPY packages ./packages
 
 RUN yarn config set httpTimeout 1200000
 RUN yarn install --immutable
+RUN yarn vitest run packages/features/tasker/internal-tasker.test.ts packages/features/tasker/task-processor.test.ts
 # Build and make embed servable from web/public/embed folder
 RUN yarn workspace @calcom/trpc run build
 RUN yarn --cwd packages/embeds/embed-core workspace @calcom/embed-core run build
