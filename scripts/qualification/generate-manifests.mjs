@@ -7,6 +7,7 @@ const root = resolve(import.meta.dirname, "../..");
 const arg = (name) => process.argv[process.argv.indexOf(name) + 1];
 const outArg = arg("--output");
 if (!outArg) throw new Error("--output is required");
+const built = process.argv.includes("--built");
 const out = resolve(outArg);
 const generatedAt = new Date().toISOString();
 const read = (file) => readFileSync(resolve(root, file), "utf8");
@@ -129,4 +130,6 @@ validateEnvironment(environment);
 validateScheduler(scheduler);
 mkdirSync(out, { recursive: true });
 for (const [name, value] of Object.entries({ "environment-manifest.json": environment, "scheduler-manifest.json": scheduler, "route-audit.json": routeAudit })) writeFileSync(resolve(out, name), `${JSON.stringify(value, null, 2)}\n`);
-writeFileSync(resolve(out, "UNBUILT.md"), `# Qualification image pending\n\nNo image manifest, SBOM, provenance, vulnerability result, or secret-scan pass is emitted locally. CI must produce both native platform digests and a digest-addressable OCI index.\n\nEnvironment SHA-256: ${sha256(JSON.stringify(environment))}\nScheduler SHA-256: ${sha256(JSON.stringify(scheduler))}\n`);
+if (!built) {
+  writeFileSync(resolve(out, "UNBUILT.md"), `# Qualification image pending\n\nNo image manifest, SBOM, provenance, vulnerability result, or secret-scan pass is emitted locally. CI must produce both native platform digests and a digest-addressable OCI index.\n\nEnvironment SHA-256: ${sha256(JSON.stringify(environment))}\nScheduler SHA-256: ${sha256(JSON.stringify(scheduler))}\n`);
+}

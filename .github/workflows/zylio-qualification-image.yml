@@ -192,7 +192,7 @@ jobs:
         run: |
           cp /tmp/secret-scan/secret-scan.json qualification-artifacts/scans/secret.json
           cp /tmp/runtime-smoke-evidence.json qualification-artifacts/runtime-smoke-evidence.json
-          node scripts/qualification/generate-manifests.mjs --output qualification-artifacts
+          node scripts/qualification/generate-manifests.mjs --output qualification-artifacts --built
       - name: Enforce zero secret, HIGH, or CRITICAL findings
         run: |
           node scripts/qualification/enforce-trivy-report.mjs secret qualification-artifacts/scans/secret.json --allowlist deploy/qualification/trivy-secret-allowlist.json --root .

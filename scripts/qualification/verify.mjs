@@ -58,6 +58,7 @@ for (const required of [
   "TRIVY_IMAGE: ghcr.io/aquasecurity/trivy@sha256:a22415a38938a56c379387a8163fcb0ce38b10ace73e593475d3658d578b2436",
   "--image-src remote",
   "enforce-trivy-report.mjs",
+  "generate-manifests.mjs --output qualification-artifacts --built",
   "write-image-manifest.mjs",
   "Runtime smoke on the native runner with PostgreSQL",
   "verify-contract-hashes.mjs",
