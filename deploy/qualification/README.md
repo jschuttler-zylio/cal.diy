@@ -32,8 +32,11 @@ of this base digest and its resolved platform descriptors.
 CI runs Trivy from an immutable official multi-platform container digest and
 forces registry-only image resolution; the scanner never receives the host
 Docker socket. Raw JSON and SBOM output are collected before policy evaluation.
-Malformed output, any secret finding, or any HIGH/CRITICAL vulnerability blocks
-the image manifest, while the raw reports remain downloadable for review.
+Malformed output, any HIGH/CRITICAL vulnerability, or any unexpected secret
+finding blocks the image manifest, while the raw reports remain downloadable
+for review. The only secret exceptions are inherited upstream documentation/test
+fixtures matched by exact path, rule count, and frozen file hash in
+`trivy-secret-allowlist.json`; a changed or additional finding fails closed.
 
 The pinned Debian base must provide `setpriv`; the image build fails immediately
 if it does not. `setpriv` drops the root bootstrap process to `node` after URL

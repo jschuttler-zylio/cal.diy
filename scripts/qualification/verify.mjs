@@ -11,6 +11,7 @@ const workflow = read(".github/workflows/zylio-qualification-image.yml");
 const dockerfile = read("Dockerfile");
 const repository = read("packages/features/tasker/repository.ts");
 const processor = read("packages/features/tasker/task-processor.ts");
+const secretAllowlist = JSON.parse(read("deploy/qualification/trivy-secret-allowlist.json"));
 const requiredFiles = [
   "DATABASE_URL",
   "DATABASE_DIRECT_URL",
@@ -85,6 +86,17 @@ if (!start.includes("exec setpriv --reuid=node --regid=node --init-groups yarn s
 if (workflow.includes("npx --yes ajv-cli")) throw new Error("CI downloads an unreviewed schema validator");
 if (workflow.includes("aquasecurity/trivy-action@") || workflow.includes("/var/run/docker.sock")) {
   throw new Error("Trivy must run from the pinned official container without the Docker socket");
+}
+if (!workflow.includes("--allowlist deploy/qualification/trivy-secret-allowlist.json --root .")) {
+  throw new Error("Trivy secret policy does not use the reviewed hash-bound allowlist");
+}
+if (secretAllowlist.schemaVersion !== "1.0.0" || secretAllowlist.sourceCommit !== "176037d0afbe572f870a3c702985e7cd83fe6c0c" || secretAllowlist.entries?.length !== 2) {
+  throw new Error("Trivy secret allowlist does not match the frozen qualification source");
+}
+for (const entry of secretAllowlist.entries) {
+  if (!/^[0-9a-f]{64}$/.test(entry.sha256 ?? "") || !entry.path || !entry.findings?.length || !entry.reason?.trim()) {
+    throw new Error("Trivy secret allowlist entry is not path, hash, rule, and rationale bound");
+  }
 }
 const nodeStages = dockerfile.split(/\r?\n/).filter((line) => line.startsWith("FROM ") && line.includes("node:"));
 if (nodeStages.length !== 3 || nodeStages.some((line) => !line.includes("node:20.20.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5"))) {
