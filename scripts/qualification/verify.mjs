@@ -50,6 +50,8 @@ for (const forbidden of ["migrate deploy", "seed-app-store"]) {
   if (start.includes(forbidden)) throw new Error(`web startup mutates database: ${forbidden}`);
 }
 for (const required of [
+  "cancel-in-progress: true",
+  "needs: secret-scan",
   "linux/amd64",
   "linux/arm64",
   "provenance: mode=max",
@@ -76,6 +78,12 @@ for (const required of [
   ".github/workflows/cron-*.yml",
 ]) {
   if (!workflow.includes(required)) throw new Error(`workflow missing ${required}`);
+}
+if (!/permissions:\s*\r?\n\s+contents: read\s*\r?\n\s+packages: write\s*\r?\n\s+id-token: write\s*\r?\n\s+attestations: write/.test(workflow)) {
+  throw new Error("image build job lacks least-privilege package and attestation permissions");
+}
+if (!/secret-scan:\s*\r?\n\s+permissions:\s*\r?\n\s+contents: read/.test(workflow)) {
+  throw new Error("secret scan job permissions are not read-only");
 }
 for (const line of workflow.split(/\r?\n/).filter((line) => line.includes("uses:"))) {
   if (!/@[0-9a-f]{40}(?:\s|$)/.test(line)) throw new Error(`workflow action is not SHA pinned: ${line.trim()}`);

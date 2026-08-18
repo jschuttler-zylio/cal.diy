@@ -32,6 +32,8 @@ of this base digest and its resolved platform descriptors.
 CI runs Trivy from an immutable official multi-platform container digest and
 forces registry-only image resolution; the scanner never receives the host
 Docker socket. Raw JSON and SBOM output are collected before policy evaluation.
+The read-only source secret job must pass before either native image build may
+publish, and each job receives only its required GitHub token permissions.
 Malformed output, any HIGH/CRITICAL vulnerability, or any unexpected secret
 finding blocks the image manifest, while the raw reports remain downloadable
 for review. The only secret exceptions are inherited upstream documentation/test
