@@ -111,7 +111,7 @@ jobs:
           printf '%s' 'ci-cron-api-not-a-secret' > "$smoke_dir/cron-api-key"
           printf '%s' 'ci-cron-secret-not-a-secret' > "$smoke_dir/cron-secret"
           printf '%s' 'http://127.0.0.1:3000' > "$smoke_dir/canonical-url"
-          printf '%s' '127.0.0.1:3000' > "$smoke_dir/allowed-hostnames"
+          printf '%s' '"127.0.0.1:3000"' > "$smoke_dir/allowed-hostnames"
           printf '%s' '1' > "$smoke_dir/telemetry-disabled"
           printf '%s' '30' > "$smoke_dir/tasker-retention-days"
           printf '%s' 'smtp.invalid' > "$smoke_dir/smtp-host"

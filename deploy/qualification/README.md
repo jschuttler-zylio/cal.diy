@@ -10,6 +10,9 @@ joins the per-tenant unique reverse-proxy network supplied through
 root-owned `/run/zylio-booking/<tenant>` tmpfs directory. Every runtime value,
 including public hostname controls, is read through an explicit `*_FILE` path;
 the Compose file does not interpolate a value or receive a `.env` file.
+`ALLOWED_HOSTNAMES` is a comma-separated sequence of JSON string literals
+without enclosing brackets: the source wraps the value in its own array before
+parsing it.
 
 The image layer is intentionally writable because upstream's runtime URL
 replacement mutates static output during startup. It has no authoritative or
