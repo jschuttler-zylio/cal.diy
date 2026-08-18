@@ -27,7 +27,10 @@ mode `0755` and files `u=rwX,go=rX`. This allows the capability-dropped startup
 root to create `sed` temporary files and atomically replace matching assets;
 the web server then drops to `node`, which retains read/execute access only. Its
 launch explicitly sets `HOME=/home/node` and `XDG_CONFIG_HOME=/home/node/.config`
-so Yarn does not inherit the pre-drop root home.
+so Yarn does not inherit the pre-drop root home. Turbo's documented CLI
+`--cache-dir` is fixed to `/home/node/.cache/turbo`, a mode-`0700`, node-owned
+runtime cache; it does not make `/calcom` or its built assets writable to the
+web process.
 The profile does not add `DAC_OVERRIDE` or make any runtime path world-writable.
 
 Every Docker build stage uses the same verified multi-architecture Node 20.20.2

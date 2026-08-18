@@ -89,7 +89,10 @@ COPY --from=builder-two --chown=node:node /calcom ./
 # node read/execute access. No runtime path is world-writable.
 RUN chown -R root:root /calcom/apps/web/.next /calcom/apps/web/public \
   && find /calcom/apps/web/.next /calcom/apps/web/public -type d -exec chmod 0755 {} + \
-  && find /calcom/apps/web/.next /calcom/apps/web/public -type f -exec chmod u=rwX,go=rX {} +
+  && find /calcom/apps/web/.next /calcom/apps/web/public -type f -exec chmod u=rwX,go=rX {} + \
+  && mkdir -p /home/node/.cache/turbo \
+  && chown node:node /home/node/.cache /home/node/.cache/turbo \
+  && chmod 0700 /home/node/.cache /home/node/.cache/turbo
 ARG NEXT_PUBLIC_WEBAPP_URL=http://localhost:3000
 ENV NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL \
   BUILT_NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL

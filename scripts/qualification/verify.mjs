@@ -141,7 +141,7 @@ if (
 }
 if (
   !start.includes(
-    "exec setpriv --reuid=node --regid=node --init-groups env HOME=/home/node XDG_CONFIG_HOME=/home/node/.config yarn start"
+    "exec setpriv --reuid=node --regid=node --init-groups env HOME=/home/node XDG_CONFIG_HOME=/home/node/.config yarn start --cache-dir /home/node/.cache/turbo"
   )
 )
   throw new Error("web process does not drop root after placeholder replacement");
@@ -210,8 +210,12 @@ for (const required of [
   "chown -R root:root /calcom/apps/web/.next /calcom/apps/web/public",
   "find /calcom/apps/web/.next /calcom/apps/web/public -type d -exec chmod 0755 {} +",
   "find /calcom/apps/web/.next /calcom/apps/web/public -type f -exec chmod u=rwX,go=rX {} +",
+  "mkdir -p /home/node/.cache/turbo",
+  "chown node:node /home/node/.cache /home/node/.cache/turbo",
+  "chmod 0700 /home/node/.cache /home/node/.cache/turbo",
 ]) {
-  if (!dockerfile.includes(required)) throw new Error(`runtime URL replacement ownership boundary is missing ${required}`);
+  if (!dockerfile.includes(required))
+    throw new Error(`runtime URL replacement ownership boundary is missing ${required}`);
 }
 if (/DAC_OVERRIDE/.test(`${dockerfile}\n${workflow}`))
   throw new Error("qualification runtime must not add DAC_OVERRIDE to bypass file ownership");
