@@ -83,6 +83,13 @@ WORKDIR /calcom
 RUN command -v setpriv
 
 COPY --from=builder-two --chown=node:node /calcom ./
+# The upstream runtime URL replacement writes only built/static web assets before
+# dropping to node. With all Linux capabilities removed, UID 0 cannot bypass
+# ownership, so make precisely those replacement targets root-owned and retain
+# node read/execute access. No runtime path is world-writable.
+RUN chown -R root:root /calcom/apps/web/.next /calcom/apps/web/public \
+  && find /calcom/apps/web/.next /calcom/apps/web/public -type d -exec chmod 0755 {} + \
+  && find /calcom/apps/web/.next /calcom/apps/web/public -type f -exec chmod u=rwX,go=rX {} +
 ARG NEXT_PUBLIC_WEBAPP_URL=http://localhost:3000
 ENV NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL \
   BUILT_NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL

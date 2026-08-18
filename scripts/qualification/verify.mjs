@@ -202,8 +202,19 @@ if (!dockerfile.includes("RUN command -v setpriv"))
   throw new Error("pinned base does not prove its privilege-drop primitive");
 if (!dockerfile.includes("COPY --from=builder-two --chown=node:node /calcom ./"))
   throw new Error("runtime tree is not owned by the non-root web user");
+for (const required of [
+  "chown -R root:root /calcom/apps/web/.next /calcom/apps/web/public",
+  "find /calcom/apps/web/.next /calcom/apps/web/public -type d -exec chmod 0755 {} +",
+  "find /calcom/apps/web/.next /calcom/apps/web/public -type f -exec chmod u=rwX,go=rX {} +",
+]) {
+  if (!dockerfile.includes(required)) throw new Error(`runtime URL replacement ownership boundary is missing ${required}`);
+}
+if (/DAC_OVERRIDE/.test(`${dockerfile}\n${workflow}`))
+  throw new Error("qualification runtime must not add DAC_OVERRIDE to bypass file ownership");
 if (!runtimeLogRedactor.includes("redactRuntimeLog") || !runtimeLogRedactor.includes("readdir"))
   throw new Error("runtime smoke failure logs are not value-redacted");
+if (!runtimeLogRedactor.includes("secretFiles"))
+  throw new Error("runtime smoke redactor does not limit literal replacement to secret files");
 if (
   /\bnpx\b/.test(entrypoint) ||
   !entrypoint.includes("/calcom/node_modules/.bin/prisma") ||

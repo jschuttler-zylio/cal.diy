@@ -17,10 +17,20 @@ function redactRuntimeLog(input, runtimeValues) {
 }
 
 async function runtimeValues(directory) {
+  const secretFiles = new Set([
+    "database-application",
+    "database-migration",
+    "nextauth-secret",
+    "calendso-encryption-key",
+    "cron-api-key",
+    "cron-secret",
+    "smtp-user",
+    "smtp-password",
+  ]);
   const entries = await readdir(directory, { withFileTypes: true });
   return Promise.all(
     entries
-      .filter((entry) => entry.isFile())
+      .filter((entry) => entry.isFile() && secretFiles.has(entry.name))
       .map((entry) => readFile(path.join(directory, entry.name), "utf8"))
   );
 }

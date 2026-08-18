@@ -21,6 +21,13 @@ materialized from the frozen `smtp-credential` Bitwarden purpose. `USE_POOL=1`
 uses the source's fixed PostgreSQL pool maximum of five; public signup is fixed
 to `NEXT_PUBLIC_DISABLE_SIGNUP=true`.
 
+The final image otherwise remains node-owned. Only the upstream replacement
+targets, `apps/web/.next` and `apps/web/public`, are root-owned with directories
+mode `0755` and files `u=rwX,go=rX`. This allows the capability-dropped startup
+root to create `sed` temporary files and atomically replace matching assets;
+the web server then drops to `node`, which retains read/execute access only.
+The profile does not add `DAC_OVERRIDE` or make any runtime path world-writable.
+
 Every Docker build stage uses the same verified multi-architecture Node 20.20.2
 Bookworm manifest digest. `yarn install --immutable` rejects any lockfile
 change; the builder receives the complete declared workspace graph so a
