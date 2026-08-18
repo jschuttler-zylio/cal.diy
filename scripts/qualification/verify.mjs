@@ -139,7 +139,11 @@ if (
 ) {
   throw new Error("qualification entrypoint does not load and validate required files");
 }
-if (!start.includes("exec setpriv --reuid=node --regid=node --init-groups yarn start"))
+if (
+  !start.includes(
+    "exec setpriv --reuid=node --regid=node --init-groups env HOME=/home/node XDG_CONFIG_HOME=/home/node/.config yarn start"
+  )
+)
   throw new Error("web process does not drop root after placeholder replacement");
 if (workflow.includes("npx --yes ajv-cli")) throw new Error("CI downloads an unreviewed schema validator");
 if (workflow.includes("aquasecurity/trivy-action@") || workflow.includes("/var/run/docker.sock")) {

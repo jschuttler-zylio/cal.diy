@@ -5,4 +5,6 @@ set -eu
 # side effect of serving traffic. The runtime URL can only be changed before a
 # digest-addressed image is started.
 scripts/replace-placeholder.sh "$BUILT_NEXT_PUBLIC_WEBAPP_URL" "$NEXT_PUBLIC_WEBAPP_URL"
-exec setpriv --reuid=node --regid=node --init-groups yarn start
+# `setpriv` changes the UID but intentionally preserves the parent environment.
+# Set a node-owned home explicitly so Yarn does not attempt to write `/root`.
+exec setpriv --reuid=node --regid=node --init-groups env HOME=/home/node XDG_CONFIG_HOME=/home/node/.config yarn start

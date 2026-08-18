@@ -25,7 +25,9 @@ The final image otherwise remains node-owned. Only the upstream replacement
 targets, `apps/web/.next` and `apps/web/public`, are root-owned with directories
 mode `0755` and files `u=rwX,go=rX`. This allows the capability-dropped startup
 root to create `sed` temporary files and atomically replace matching assets;
-the web server then drops to `node`, which retains read/execute access only.
+the web server then drops to `node`, which retains read/execute access only. Its
+launch explicitly sets `HOME=/home/node` and `XDG_CONFIG_HOME=/home/node/.config`
+so Yarn does not inherit the pre-drop root home.
 The profile does not add `DAC_OVERRIDE` or make any runtime path world-writable.
 
 Every Docker build stage uses the same verified multi-architecture Node 20.20.2
