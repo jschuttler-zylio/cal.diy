@@ -65,7 +65,7 @@ jobs:
         run: |
           mkdir -p /tmp/digests
           printf '%s' '${{ steps.build.outputs.digest }}' > /tmp/digests/${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}.txt
-      - uses: actions/attest-build-provenance@1f7c45f9c2bfe2094b6a8a6b08e5f652476c1a53 # v2.3.0
+      - uses: actions/attest-build-provenance@db473fddc028af60658334401dc6fa3ffd8669fd # v2.3.0
         with:
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -157,7 +157,7 @@ jobs:
           printf '%s' "$index_digest" > multi-platform-digest.txt
           echo "digest=$index_digest" >> "$GITHUB_OUTPUT"
       - name: Scan the published digest (does not claim a pass)
-        uses: aquasecurity/trivy-action@b66408c4e91ba52ec5b4e3fd5f8c78e2f7490b01 # 0.33.1
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
           image-ref: ${{ env.IMAGE }}@${{ steps.index.outputs.digest }}
           format: json
@@ -166,7 +166,7 @@ jobs:
           severity: CRITICAL,HIGH
       - name: Export a downloadable CycloneDX SBOM
         if: always()
-        uses: aquasecurity/trivy-action@b66408c4e91ba52ec5b4e3fd5f8c78e2f7490b01 # 0.33.1
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
           image-ref: ${{ env.IMAGE }}@${{ steps.index.outputs.digest }}
           format: cyclonedx
@@ -207,12 +207,12 @@ jobs:
         with:
           fetch-depth: 0
       - name: Scan committed source for secrets
-        uses: gitleaks/gitleaks-action@a5d5f7f2d92cf7351fd0d7c95d405445ce4f60d5 # v2.3.9
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Export secret scan evidence
         if: always()
-        uses: aquasecurity/trivy-action@b66408c4e91ba52ec5b4e3fd5f8c78e2f7490b01 # 0.33.1
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
           scan-type: fs
           scan-ref: .
