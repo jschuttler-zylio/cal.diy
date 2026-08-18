@@ -60,7 +60,9 @@ forces registry-only image resolution; the scanner never receives the host
 Docker socket. It scans the published AMD64 and ARM64 descriptors separately
 for vulnerabilities and embedded secrets, retains both raw reports, and
 assembles platform-labelled policy evidence. Raw JSON and SBOM output are
-collected before policy evaluation.
+collected before policy evaluation. The published-image scan and SBOM export
+each have a bounded 20-minute Trivy analysis timeout; reaching that deadline
+fails the workflow rather than suppressing scan coverage.
 The read-only source secret job must pass before either native image build may
 publish, and each job receives only its required GitHub token permissions.
 Malformed output, any HIGH/CRITICAL vulnerability, or any unexpected secret

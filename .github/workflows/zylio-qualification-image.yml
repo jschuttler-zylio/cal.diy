@@ -218,7 +218,7 @@ jobs:
               -e TRIVY_USERNAME -e TRIVY_PASSWORD \
               -v "$PWD/qualification-artifacts/scans/raw:/out" \
               -v "$RUNNER_TEMP/trivy-cache:/cache" \
-              "$TRIVY_IMAGE" image --cache-dir /cache --skip-version-check \
+              "$TRIVY_IMAGE" image --cache-dir /cache --timeout 20m --skip-version-check \
               --image-src remote --platform "$platform" --scanners vuln,secret \
               --format json --exit-code 0 --output "/out/image-${architecture}.json" \
               "${IMAGE}@${{ steps.index.outputs.digest }}"
@@ -234,7 +234,7 @@ jobs:
             -e TRIVY_USERNAME -e TRIVY_PASSWORD \
             -v "$PWD/qualification-artifacts/sbom:/out" \
             -v "$RUNNER_TEMP/trivy-cache:/cache" \
-            "$TRIVY_IMAGE" image --cache-dir /cache --skip-version-check \
+            "$TRIVY_IMAGE" image --cache-dir /cache --timeout 20m --skip-version-check \
             --image-src remote --format cyclonedx \
             --output /out/sbom.cdx.json \
             "${IMAGE}@${{ steps.index.outputs.digest }}"
