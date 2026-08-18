@@ -31,7 +31,7 @@ permissions:
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/cal-diy
-  SMOKE_POSTGRES_IMAGE: docker.io/library/postgres:16.10-bookworm@sha256:6302e5605162d79d9c98bbd0561fe6f217d0ffeea42e3cb024765e152d17046a
+  SMOKE_POSTGRES_IMAGE: docker.io/library/postgres:16.10-bookworm@sha256:38471f330eb885e04de130b768d6db4e10469e2311879c7e5c699f6d2d8a1c74
   SMOKE_POSTGRES_PLATFORMS: linux/amd64,linux/arm64
   TRIVY_IMAGE: ghcr.io/aquasecurity/trivy@sha256:a22415a38938a56c379387a8163fcb0ce38b10ace73e593475d3658d578b2436
 
@@ -51,6 +51,10 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Verify pinned PostgreSQL index contains the native platform
+        run: |
+          docker buildx imagetools inspect "$SMOKE_POSTGRES_IMAGE" --raw |
+            node scripts/qualification/verify-oci-platforms.mjs --platform "${{ matrix.platform }}"
       - uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
         with:
           registry: ghcr.io

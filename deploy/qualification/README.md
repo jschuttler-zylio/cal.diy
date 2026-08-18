@@ -31,6 +31,12 @@ source-image schema has no base-image field, so the OCI
 BuildKit provenance and CycloneDX SBOM artifacts are the authoritative record
 of this base digest and its resolved platform descriptors.
 
+The native runtime smoke also pins PostgreSQL 16.10 Bookworm by its
+multi-platform OCI index digest. The static qualification verifier checks that
+exact pin, CI inspects the index for the native descriptor before building, and
+Docker must resolve the matching AMD64 or ARM64 image on the corresponding
+runner before migrations or web health can pass.
+
 CI runs Trivy from an immutable official multi-platform container digest and
 forces registry-only image resolution; the scanner never receives the host
 Docker socket. Raw JSON and SBOM output are collected before policy evaluation.
