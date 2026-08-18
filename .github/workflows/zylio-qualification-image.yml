@@ -111,7 +111,7 @@ jobs:
           test "$(wc -c < "$smoke_dir/calendso-encryption-key")" -eq 32
           sudo chown -R root:root "$smoke_dir"
           sudo chmod 0700 "$smoke_dir"
-          sudo chmod 0400 "$smoke_dir"/*
+          sudo find "$smoke_dir" -mindepth 1 -maxdepth 1 -type f -exec chmod 0400 {} +
           docker network create "$smoke_network"
           docker run -d --platform "${{ matrix.platform }}" --name "$smoke_db" --network "$smoke_network" -e POSTGRES_USER=cal -e POSTGRES_PASSWORD=cal -e POSTGRES_DB=calendso "$SMOKE_POSTGRES_IMAGE"
           until docker exec "$smoke_db" pg_isready -U cal -d calendso; do sleep 1; done
@@ -121,6 +121,7 @@ jobs:
           docker exec "$smoke_web" node -e "fetch('http://127.0.0.1:3000').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
           printf '{"platform":"${{ matrix.platform }}","digest":"${{ steps.build.outputs.digest }}","runtimeSmoke":"pass"}\n' > /tmp/digests/runtime-smoke-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
         with:
           name: digest-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}
           path: /tmp/digests

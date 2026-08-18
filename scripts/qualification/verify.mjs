@@ -128,7 +128,7 @@ if (!dockerfile.includes("RUN command -v setpriv")) throw new Error("pinned base
 if (/\bnpx\b/.test(entrypoint) || !entrypoint.includes("/calcom/node_modules/.bin/prisma") || !entrypoint.includes("/calcom/node_modules/.bin/ts-node")) {
   throw new Error("runtime maintenance commands are not confined to copied local binaries");
 }
-for (const required of ["sudo chown -R root:root", "sudo chmod 0700", "node -e \"fetch("]) {
+for (const required of ["sudo chown -R root:root", "sudo chmod 0700", "-exec chmod 0400 {} +", "node -e \"fetch("]) {
   if (!workflow.includes(required)) throw new Error(`runtime smoke does not enforce ${required}`);
 }
 for (const file of [repository, processor]) {
