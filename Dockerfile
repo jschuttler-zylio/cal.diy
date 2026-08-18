@@ -82,7 +82,7 @@ WORKDIR /calcom
 
 RUN command -v setpriv
 
-COPY --from=builder-two /calcom ./
+COPY --from=builder-two --chown=node:node /calcom ./
 ARG NEXT_PUBLIC_WEBAPP_URL=http://localhost:3000
 ENV NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL \
   BUILT_NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL

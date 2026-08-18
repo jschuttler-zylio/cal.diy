@@ -90,7 +90,18 @@ jobs:
           smoke_db="qualification-smoke-db-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}"
           smoke_web="qualification-smoke-web-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}"
           smoke_dir="$PWD/.qualification-smoke"
-          cleanup() { docker rm -f "$smoke_web" "$smoke_db" >/dev/null 2>&1 || true; docker network rm "$smoke_network" >/dev/null 2>&1 || true; sudo rm -rf "$smoke_dir"; }
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ] && docker inspect "$smoke_web" >/dev/null 2>&1; then
+              docker inspect --format 'web container state: exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{json .State.Error}}' "$smoke_web" || true
+              docker logs --tail 200 "$smoke_web" 2>&1 |
+                sudo "$(command -v node)" scripts/qualification/redact-runtime-log.mjs --directory "$smoke_dir" || true
+            fi
+            docker rm -f "$smoke_web" "$smoke_db" >/dev/null 2>&1 || true
+            docker network rm "$smoke_network" >/dev/null 2>&1 || true
+            sudo rm -rf "$smoke_dir"
+            return "$status"
+          }
           trap cleanup EXIT
           mkdir -p "$smoke_dir"
           printf '%s' 'postgresql://cal:cal@qualification-smoke-db-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}:5432/calendso' > "$smoke_dir/database-application"

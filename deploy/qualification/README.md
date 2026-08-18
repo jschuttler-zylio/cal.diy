@@ -56,8 +56,11 @@ fixtures matched by exact path, rule count, and frozen file hash in
 
 The pinned Debian base must provide `setpriv`; the image build fails immediately
 if it does not. `setpriv` drops the root bootstrap process to `node` after URL
-replacement, avoiding a mutable apt package install. Health checks use Node's
-built-in `fetch`, so the image carries no additional probe client.
+replacement, avoiding a mutable apt package install. The runtime tree is owned
+by `node` so Next/Turbo can write only their image-local runtime files after the
+drop. A failed native smoke emits only a bounded log tail after replacing every
+mounted runtime-file value and credential-shaped URI segment. Health checks use
+Node's built-in `fetch`, so the image carries no additional probe client.
 
 Migrations and app-store seeding require `--profile maintenance` and use the
 same entrypoint and secret-file loader as web. They are never web startup work.
