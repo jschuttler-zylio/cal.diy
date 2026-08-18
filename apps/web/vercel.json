@@ -9,20 +9,12 @@
       "schedule": "0 3 * * *"
     },
     {
-      "path": "/api/cron/queuedFormResponseCleanup",
-      "schedule": "0 */12 * * *"
-    },
-    {
       "path": "/api/tasks/cron",
       "schedule": "* * * * *"
     },
     {
       "path": "/api/tasks/cleanup",
       "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/cron/credentials",
-      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/selected-calendars",

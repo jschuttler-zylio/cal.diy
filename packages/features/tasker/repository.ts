@@ -49,7 +49,7 @@ export class TaskRepository {
     options: { scheduledAt?: Date; maxAttempts?: number; referenceUid?: string } = {}
   ) {
     const { scheduledAt, maxAttempts, referenceUid } = options;
-    console.info("Creating task", { type, payload, scheduledAt, maxAttempts });
+    console.info("Creating task", { type, scheduledAt, maxAttempts });
     const newTask = await this.deps.prismaClient.task.create({
       data: {
         payload,
@@ -197,18 +197,15 @@ export class TaskRepository {
     }
   }
 
-  async cleanup() {
-    // TODO: Uncomment this later
-    // return this.deps.prismaClient.task.deleteMany({
-    //   where: {
-    //     OR: [
-    //       // Get tasks that have succeeded
-    //       whereSucceeded,
-    //       // Get tasks where maxAttemps has been reached
-    //       whereMaxAttemptsReached,
-    //     ],
-    //   },
-    // });
+  async cleanup(cutoff: Date) {
+    return this.deps.prismaClient.task.deleteMany({
+      where: {
+        OR: [
+          { ...whereSucceeded, succeededAt: { lt: cutoff } },
+          { ...whereMaxAttemptsReached, lastFailedAttemptAt: { lt: cutoff } },
+        ],
+      },
+    });
   }
 
 }

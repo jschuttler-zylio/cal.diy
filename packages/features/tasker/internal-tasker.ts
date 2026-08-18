@@ -4,6 +4,18 @@ import { Task } from "./repository";
 import type { TaskTypes } from "./tasker";
 import { type TaskerCreate, type Tasker } from "./tasker";
 
+const defaultRetentionDays = 30;
+
+export function getTaskRetentionDays(value = process.env.TASKER_RETENTION_DAYS): number {
+  const days = Number(value);
+  if (!Number.isInteger(days) || days < 7 || days > 3650) return defaultRetentionDays;
+  return days;
+}
+
+export function getTaskCleanupCutoff(now = new Date(), retentionDays = getTaskRetentionDays()): Date {
+  return new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+}
+
 /**
  * This is the default internal Tasker that uses the Task repository to create tasks.
  * It doesn't have any external dependencies and is suitable for most use cases.
@@ -16,9 +28,11 @@ export class InternalTasker implements Tasker {
     return Task.create(type, payloadString, options);
   };
 
-  async cleanup(): Promise<void> {
-    const count = await Task.cleanup();
-    logger.info(`Cleaned up ${count} tasks`);
+  async cleanup(): Promise<{ count: number; retentionDays: number }> {
+    const retentionDays = getTaskRetentionDays();
+    const result = await Task.cleanup(getTaskCleanupCutoff(undefined, retentionDays));
+    logger.info(`Cleaned up ${result.count} terminal tasks older than ${retentionDays} days`);
+    return { ...result, retentionDays };
   }
 
   async cancel(id: string): Promise<string> {

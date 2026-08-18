@@ -35,7 +35,7 @@ export type TaskerCreate = <TaskKey extends keyof TaskPayloads>(
 export interface Tasker {
   /** Create a new task with the given type and payload. */
   create: TaskerCreate;
-  cleanup(): Promise<void>;
+  cleanup(): Promise<{ count: number; retentionDays: number }>;
   cancel(id: string): Promise<string>;
   cancelWithReference(referenceUid: string, type: TaskTypes): Promise<string | null>;
 }

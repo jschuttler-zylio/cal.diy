@@ -1,0 +1,228 @@
+name: Zylio qualification image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [zylio/qualification-176037d]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - .yarn/**
+      - .yarnrc.yml
+      - package.json
+      - yarn.lock
+      - turbo.json
+      - i18n.json
+      - apps/web/**
+      - packages/**
+      - scripts/**
+      - deploy/qualification/**
+      - .github/workflows/cron-*.yml
+      - scripts/qualification/**
+      - .github/workflows/zylio-qualification-image.yml
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/cal-diy
+  SMOKE_POSTGRES_IMAGE: docker.io/library/postgres:16.10-bookworm@sha256:6302e5605162d79d9c98bbd0561fe6f217d0ffeea42e3cb024765e152d17046a
+  SMOKE_POSTGRES_PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  build-and-publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            CALCOM_TELEMETRY_DISABLED=1
+            NEXT_PUBLIC_DISABLE_SIGNUP=true
+            NEXT_PUBLIC_API_V2_URL=
+            ORGANIZATIONS_ENABLED=false
+          tags: ${{ env.IMAGE }}:qualification-${{ github.sha }}-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}
+      - name: Record immutable platform digest
+        run: |
+          mkdir -p /tmp/digests
+          printf '%s' '${{ steps.build.outputs.digest }}' > /tmp/digests/${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}.txt
+      - uses: actions/attest-build-provenance@1f7c45f9c2bfe2094b6a8a6b08e5f652476c1a53 # v2.3.0
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Runtime smoke on the native runner with PostgreSQL
+        run: |
+          set -eu
+          smoke_network="qualification-smoke-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}"
+          smoke_db="qualification-smoke-db-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}"
+          smoke_web="qualification-smoke-web-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}"
+          smoke_dir="$PWD/.qualification-smoke"
+          cleanup() { docker rm -f "$smoke_web" "$smoke_db" >/dev/null 2>&1 || true; docker network rm "$smoke_network" >/dev/null 2>&1 || true; sudo rm -rf "$smoke_dir"; }
+          trap cleanup EXIT
+          mkdir -p "$smoke_dir"
+          printf '%s' 'postgresql://cal:cal@qualification-smoke-db-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}:5432/calendso' > "$smoke_dir/database-application"
+          cp "$smoke_dir/database-application" "$smoke_dir/database-migration"
+          printf '%s' '0123456789abcdef0123456789abcdef' > "$smoke_dir/nextauth-secret"
+          printf '%s' '0123456789abcdef0123456789abcdef' > "$smoke_dir/calendso-encryption-key"
+          printf '%s' 'ci-cron-api-not-a-secret' > "$smoke_dir/cron-api-key"
+          printf '%s' 'ci-cron-secret-not-a-secret' > "$smoke_dir/cron-secret"
+          printf '%s' 'http://127.0.0.1:3000' > "$smoke_dir/canonical-url"
+          printf '%s' '127.0.0.1:3000' > "$smoke_dir/allowed-hostnames"
+          printf '%s' '1' > "$smoke_dir/telemetry-disabled"
+          printf '%s' '30' > "$smoke_dir/tasker-retention-days"
+          printf '%s' 'smtp.invalid' > "$smoke_dir/smtp-host"
+          printf '%s' '587' > "$smoke_dir/smtp-port"
+          printf '%s' 'ci-smtp-user' > "$smoke_dir/smtp-user"
+          printf '%s' 'ci-smtp-password-not-a-secret' > "$smoke_dir/smtp-password"
+          printf '%s' 'noreply@example.invalid' > "$smoke_dir/smtp-from"
+          printf '%s' 'Qualification CI' > "$smoke_dir/smtp-from-name"
+          printf '%s' '1' > "$smoke_dir/use-pool"
+          printf '%s' 'true' > "$smoke_dir/disable-signup"
+          test "$(wc -c < "$smoke_dir/nextauth-secret")" -eq 32
+          test "$(wc -c < "$smoke_dir/calendso-encryption-key")" -eq 32
+          sudo chown -R root:root "$smoke_dir"
+          sudo chmod 0700 "$smoke_dir"
+          sudo chmod 0400 "$smoke_dir"/*
+          docker network create "$smoke_network"
+          docker run -d --platform "${{ matrix.platform }}" --name "$smoke_db" --network "$smoke_network" -e POSTGRES_USER=cal -e POSTGRES_PASSWORD=cal -e POSTGRES_DB=calendso "$SMOKE_POSTGRES_IMAGE"
+          until docker exec "$smoke_db" pg_isready -U cal -d calendso; do sleep 1; done
+          docker run --rm --network "$smoke_network" --cap-drop ALL --cap-add SETUID --cap-add SETGID --security-opt no-new-privileges --mount "type=bind,source=$smoke_dir,target=/run/zylio-booking/ci,readonly" --entrypoint /calcom/scripts/qualification-entrypoint.sh "${IMAGE}@${{ steps.build.outputs.digest }}" migrate
+          docker run -d --name "$smoke_web" --network "$smoke_network" --cap-drop ALL --cap-add SETUID --cap-add SETGID --security-opt no-new-privileges --mount "type=bind,source=$smoke_dir,target=/run/zylio-booking/ci,readonly" --entrypoint /calcom/scripts/qualification-entrypoint.sh "${IMAGE}@${{ steps.build.outputs.digest }}" web
+          for attempt in $(seq 1 60); do docker exec "$smoke_web" node -e "fetch('http://127.0.0.1:3000').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))" && break; sleep 2; done
+          docker exec "$smoke_web" node -e "fetch('http://127.0.0.1:3000').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+          printf '{"platform":"${{ matrix.platform }}","digest":"${{ steps.build.outputs.digest }}","runtimeSmoke":"pass"}\n' > /tmp/digests/runtime-smoke-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: digest-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}
+          path: /tmp/digests
+
+  publish-index-and-evidence:
+    needs: [build-and-publish, secret-scan]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: digest-*
+          path: /tmp/digests
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: secret-scan
+          path: /tmp/secret-scan
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify native runtime smoke records
+        run: |
+          node scripts/qualification/verify-runtime-smokes.mjs \
+            --dir /tmp/digests \
+            --output /tmp/runtime-smoke-evidence.json \
+            --amd64-digest "$(cat /tmp/digests/amd64.txt)" \
+            --arm64-digest "$(cat /tmp/digests/arm64.txt)"
+      - id: index
+        name: Create and publish the multi-platform index by digest
+        run: |
+          amd64="$(cat /tmp/digests/amd64.txt)"
+          arm64="$(cat /tmp/digests/arm64.txt)"
+          docker buildx imagetools create \
+            --tag "${IMAGE}:qualification-${GITHUB_SHA}" \
+            "${IMAGE}@${amd64}" "${IMAGE}@${arm64}"
+          docker buildx imagetools inspect "${IMAGE}:qualification-${GITHUB_SHA}" --raw > index.json
+          index_digest="$(docker buildx imagetools inspect "${IMAGE}:qualification-${GITHUB_SHA}" | awk '/^Digest:/ {print $2}')"
+          test -n "$index_digest"
+          printf '%s' "$index_digest" > multi-platform-digest.txt
+          echo "digest=$index_digest" >> "$GITHUB_OUTPUT"
+      - name: Scan the published digest (does not claim a pass)
+        uses: aquasecurity/trivy-action@b66408c4e91ba52ec5b4e3fd5f8c78e2f7490b01 # 0.33.1
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ steps.index.outputs.digest }}
+          format: json
+          output: trivy.json
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+      - name: Export a downloadable CycloneDX SBOM
+        if: always()
+        uses: aquasecurity/trivy-action@b66408c4e91ba52ec5b4e3fd5f8c78e2f7490b01 # 0.33.1
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ steps.index.outputs.digest }}
+          format: cyclonedx
+          output: sbom.cdx.json
+      - name: Assemble hashed qualification evidence manifest
+        if: success()
+        run: |
+          mkdir -p qualification-artifacts/sbom qualification-artifacts/scans
+          cp sbom.cdx.json qualification-artifacts/sbom/sbom.cdx.json
+          cp trivy.json qualification-artifacts/scans/vulnerability.json
+          cp /tmp/secret-scan/secret-scan.json qualification-artifacts/scans/secret.json
+          cp /tmp/runtime-smoke-evidence.json qualification-artifacts/runtime-smoke-evidence.json
+          node scripts/qualification/generate-manifests.mjs --output qualification-artifacts
+          cd qualification-artifacts
+          node ../scripts/qualification/write-image-manifest.mjs \
+            --output image-manifest.json \
+            --repository "${IMAGE}" \
+            --patch-commit "${GITHUB_SHA}" \
+            --multi-platform-digest "${{ steps.index.outputs.digest }}" \
+            --amd64-digest "$(cat /tmp/digests/amd64.txt)" \
+            --arm64-digest "$(cat /tmp/digests/arm64.txt)" \
+            --runtime-dir /tmp/digests
+      - name: Validate artifacts against canonical frozen schemas
+        run: |
+          node scripts/qualification/verify-contract-hashes.mjs
+          node scripts/qualification/validate-manifests.mjs --schema-dir deploy/qualification/contracts --artifact-dir qualification-artifacts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: qualification-source-image-evidence
+          path: qualification-artifacts
+          if-no-files-found: warn
+
+  secret-scan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Scan committed source for secrets
+        uses: gitleaks/gitleaks-action@a5d5f7f2d92cf7351fd0d7c95d405445ce4f60d5 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Export secret scan evidence
+        if: always()
+        uses: aquasecurity/trivy-action@b66408c4e91ba52ec5b4e3fd5f8c78e2f7490b01 # 0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: secret
+          format: json
+          output: secret-scan.json
+          exit-code: "1"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: secret-scan
+          path: secret-scan.json
+          if-no-files-found: warn

@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://withzylio.dev/schemas/booking/source-image.v1.schema.json",
+  "title": "Cal.diy source and immutable image evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "source",
+    "patches",
+    "images",
+    "sbom",
+    "scans",
+    "generatedManifests",
+    "builtAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "commit", "licenseSpdx", "licenseSha256"],
+      "properties": {
+        "repository": { "type": "string", "format": "uri" },
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "licenseSpdx": { "const": "MIT" },
+        "licenseSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "patches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["commit", "purpose"],
+        "properties": {
+          "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "purpose": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "multiPlatformDigest", "platforms"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "multiPlatformDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "platforms": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["platform", "digest", "runtimeSmoke"],
+            "properties": {
+              "platform": { "enum": ["linux/amd64", "linux/arm64"] },
+              "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+              "runtimeSmoke": { "enum": ["pass", "fail"] }
+            }
+          }
+        }
+      }
+    },
+    "sbom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "path", "sha256"],
+      "properties": {
+        "format": { "enum": ["spdx-json", "cyclonedx-json"] },
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "scans": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vulnerability", "secret", "unexplainedCritical", "unexplainedHigh"],
+      "properties": {
+        "vulnerability": { "$ref": "#/$defs/artifact" },
+        "secret": { "$ref": "#/$defs/artifact" },
+        "unexplainedCritical": { "const": 0 },
+        "unexplainedHigh": { "const": 0 }
+      }
+    },
+    "generatedManifests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["environment", "scheduler"],
+      "properties": {
+        "environment": { "$ref": "#/$defs/artifact" },
+        "scheduler": { "$ref": "#/$defs/artifact" }
+      }
+    },
+    "builtAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

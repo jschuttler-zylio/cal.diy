@@ -1,0 +1,91 @@
+name: caldiy-qualification
+
+# The only bind is booking-ops' root-owned tmpfs secret directory. It has no
+# persistent host data, socket, or application mount and is read-only here.
+x-runtime-secrets: &runtime-secrets
+  type: bind
+  source: ${CALDIY_SECRET_DIR:?booking-ops tmpfs secret directory required}
+  target: /run/zylio-booking/${BOOKING_TENANT_SLUG:?tenant slug required}
+  read_only: true
+  bind:
+    create_host_path: false
+
+x-secret-files: &secret-files
+  DATABASE_URL_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/database-application
+  DATABASE_DIRECT_URL_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/database-migration
+  NEXTAUTH_SECRET_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/nextauth-secret
+  CALENDSO_ENCRYPTION_KEY_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/calendso-encryption-key
+  CRON_API_KEY_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/cron-api-key
+  CRON_SECRET_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/cron-secret
+  NEXT_PUBLIC_WEBAPP_URL_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/canonical-url
+  NEXTAUTH_URL_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/canonical-url
+  ALLOWED_HOSTNAMES_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/allowed-hostnames
+  CALCOM_TELEMETRY_DISABLED_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/telemetry-disabled
+  TASKER_RETENTION_DAYS_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/tasker-retention-days
+  EMAIL_SERVER_HOST_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/smtp-host
+  EMAIL_SERVER_PORT_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/smtp-port
+  EMAIL_SERVER_USER_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/smtp-user
+  EMAIL_SERVER_PASSWORD_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/smtp-password
+  EMAIL_FROM_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/smtp-from
+  EMAIL_FROM_NAME_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/smtp-from-name
+  USE_POOL_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/use-pool
+  NEXT_PUBLIC_DISABLE_SIGNUP_FILE: /run/zylio-booking/${BOOKING_TENANT_SLUG}/disable-signup
+
+x-hardening: &hardening
+  # Upstream replaces static URL placeholders on startup. This writable image
+  # layer has no authoritative volume or host-data mount; immutable promotion
+  # must still use a matching canonical URL until upstream removes mutation.
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=128m,mode=1777
+  cap_drop: [ALL]
+  cap_add: [SETUID, SETGID]
+  security_opt: [no-new-privileges:true]
+  init: true
+  pids_limit: 256
+
+services:
+  web:
+    image: ${CALDIY_IMAGE:?must be an OCI repository@sha256 digest reference}
+    entrypoint: ["/calcom/scripts/qualification-entrypoint.sh"]
+    command: [web]
+    environment: *secret-files
+    volumes: [*runtime-secrets]
+    <<: *hardening
+    mem_limit: 1536m
+    cpus: 1.50
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    networks: [tenant-egress, external-proxy]
+
+  migrate:
+    image: ${CALDIY_IMAGE:?must be an OCI repository@sha256 digest reference}
+    profiles: [maintenance]
+    entrypoint: ["/calcom/scripts/qualification-entrypoint.sh"]
+    command: [migrate]
+    environment: *secret-files
+    volumes: [*runtime-secrets]
+    <<: *hardening
+    networks: [tenant-egress]
+
+  seed-app-store:
+    image: ${CALDIY_IMAGE:?must be an OCI repository@sha256 digest reference}
+    profiles: [maintenance]
+    entrypoint: ["/calcom/scripts/qualification-entrypoint.sh"]
+    command: [seed-app-store]
+    environment: *secret-files
+    volumes: [*runtime-secrets]
+    <<: *hardening
+    networks: [tenant-egress]
+
+networks:
+  tenant-egress:
+    name: booking-${BOOKING_TENANT_SLUG:?tenant slug required}-egress
+  external-proxy:
+    external: true
+    name: ${BOOKING_PROXY_NETWORK:?external reverse-proxy network required}
