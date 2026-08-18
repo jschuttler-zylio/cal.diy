@@ -179,15 +179,18 @@ jobs:
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          mkdir -p qualification-artifacts/scans "$RUNNER_TEMP/trivy-cache"
-          docker run --rm --platform linux/amd64 \
-            -e TRIVY_USERNAME -e TRIVY_PASSWORD \
-            -v "$PWD/qualification-artifacts/scans:/out" \
-            -v "$RUNNER_TEMP/trivy-cache:/cache" \
-            "$TRIVY_IMAGE" image --cache-dir /cache --skip-version-check \
-            --image-src remote --scanners vuln --format json --exit-code 0 \
-            --output /out/vulnerability.json \
-            "${IMAGE}@${{ steps.index.outputs.digest }}"
+          mkdir -p qualification-artifacts/scans/raw "$RUNNER_TEMP/trivy-cache"
+          for platform in linux/amd64 linux/arm64; do
+            architecture="${platform#linux/}"
+            docker run --rm --platform linux/amd64 \
+              -e TRIVY_USERNAME -e TRIVY_PASSWORD \
+              -v "$PWD/qualification-artifacts/scans/raw:/out" \
+              -v "$RUNNER_TEMP/trivy-cache:/cache" \
+              "$TRIVY_IMAGE" image --cache-dir /cache --skip-version-check \
+              --image-src remote --platform "$platform" --scanners vuln,secret \
+              --format json --exit-code 0 --output "/out/image-${architecture}.json" \
+              "${IMAGE}@${{ steps.index.outputs.digest }}"
+          done
       - name: Export a downloadable CycloneDX SBOM
         env:
           TRIVY_USERNAME: ${{ github.actor }}
@@ -205,7 +208,13 @@ jobs:
             "${IMAGE}@${{ steps.index.outputs.digest }}"
       - name: Collect raw evidence before applying scan policy
         run: |
-          cp /tmp/secret-scan/secret-scan.json qualification-artifacts/scans/secret.json
+          cp /tmp/secret-scan/secret-scan.json qualification-artifacts/scans/raw/source-secret.json
+          node scripts/qualification/assemble-scan-evidence.mjs \
+            --source-secret qualification-artifacts/scans/raw/source-secret.json \
+            --amd64 qualification-artifacts/scans/raw/image-amd64.json \
+            --arm64 qualification-artifacts/scans/raw/image-arm64.json \
+            --vulnerability-output qualification-artifacts/scans/vulnerability.json \
+            --secret-output qualification-artifacts/scans/secret.json
           cp /tmp/runtime-smoke-evidence.json qualification-artifacts/runtime-smoke-evidence.json
           node scripts/qualification/generate-manifests.mjs --output qualification-artifacts --built
       - name: Enforce zero secret, HIGH, or CRITICAL findings
