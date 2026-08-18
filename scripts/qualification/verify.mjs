@@ -33,6 +33,27 @@ const requiredFiles = [
   "USE_POOL",
   "NEXT_PUBLIC_DISABLE_SIGNUP",
 ];
+const runtimeSmokeFiles = {
+  DATABASE_URL: "database-application",
+  DATABASE_DIRECT_URL: "database-migration",
+  NEXTAUTH_SECRET: "nextauth-secret",
+  CALENDSO_ENCRYPTION_KEY: "calendso-encryption-key",
+  CRON_API_KEY: "cron-api-key",
+  CRON_SECRET: "cron-secret",
+  NEXT_PUBLIC_WEBAPP_URL: "canonical-url",
+  NEXTAUTH_URL: "canonical-url",
+  ALLOWED_HOSTNAMES: "allowed-hostnames",
+  CALCOM_TELEMETRY_DISABLED: "telemetry-disabled",
+  TASKER_RETENTION_DAYS: "tasker-retention-days",
+  EMAIL_SERVER_HOST: "smtp-host",
+  EMAIL_SERVER_PORT: "smtp-port",
+  EMAIL_SERVER_USER: "smtp-user",
+  EMAIL_SERVER_PASSWORD: "smtp-password",
+  EMAIL_FROM: "smtp-from",
+  EMAIL_FROM_NAME: "smtp-from-name",
+  USE_POOL: "use-pool",
+  NEXT_PUBLIC_DISABLE_SIGNUP: "disable-signup",
+};
 for (const required of ["@sha256", "profiles: [maintenance]", "cap_drop: [ALL]", "DATABASE_URL_FILE", "tenant-egress", "external-proxy"]) {
   if (!compose.includes(required)) throw new Error(`qualification compose missing ${required}`);
 }
@@ -45,6 +66,10 @@ if (!profileDocs.includes("intentionally writable") || !profileDocs.includes("pe
 }
 for (const name of requiredFiles) {
   if (!entrypoint.includes(name) || !compose.includes(`${name}_FILE`)) throw new Error(`missing file-backed runtime mapping: ${name}`);
+  const runtimePath = `/run/zylio-booking/ci/${runtimeSmokeFiles[name]}`;
+  if (!workflow.includes(`-e ${name}_FILE=${runtimePath}`)) {
+    throw new Error(`native runtime smoke missing exact file mapping: ${name}_FILE=${runtimePath}`);
+  }
 }
 for (const forbidden of ["migrate deploy", "seed-app-store"]) {
   if (start.includes(forbidden)) throw new Error(`web startup mutates database: ${forbidden}`);

@@ -116,11 +116,32 @@ jobs:
           sudo chown -R root:root "$smoke_dir"
           sudo chmod 0700 "$smoke_dir"
           sudo find "$smoke_dir" -mindepth 1 -maxdepth 1 -type f -exec chmod 0400 {} +
+          runtime_file_args=(
+            -e DATABASE_URL_FILE=/run/zylio-booking/ci/database-application
+            -e DATABASE_DIRECT_URL_FILE=/run/zylio-booking/ci/database-migration
+            -e NEXTAUTH_SECRET_FILE=/run/zylio-booking/ci/nextauth-secret
+            -e CALENDSO_ENCRYPTION_KEY_FILE=/run/zylio-booking/ci/calendso-encryption-key
+            -e CRON_API_KEY_FILE=/run/zylio-booking/ci/cron-api-key
+            -e CRON_SECRET_FILE=/run/zylio-booking/ci/cron-secret
+            -e NEXT_PUBLIC_WEBAPP_URL_FILE=/run/zylio-booking/ci/canonical-url
+            -e NEXTAUTH_URL_FILE=/run/zylio-booking/ci/canonical-url
+            -e ALLOWED_HOSTNAMES_FILE=/run/zylio-booking/ci/allowed-hostnames
+            -e CALCOM_TELEMETRY_DISABLED_FILE=/run/zylio-booking/ci/telemetry-disabled
+            -e TASKER_RETENTION_DAYS_FILE=/run/zylio-booking/ci/tasker-retention-days
+            -e EMAIL_SERVER_HOST_FILE=/run/zylio-booking/ci/smtp-host
+            -e EMAIL_SERVER_PORT_FILE=/run/zylio-booking/ci/smtp-port
+            -e EMAIL_SERVER_USER_FILE=/run/zylio-booking/ci/smtp-user
+            -e EMAIL_SERVER_PASSWORD_FILE=/run/zylio-booking/ci/smtp-password
+            -e EMAIL_FROM_FILE=/run/zylio-booking/ci/smtp-from
+            -e EMAIL_FROM_NAME_FILE=/run/zylio-booking/ci/smtp-from-name
+            -e USE_POOL_FILE=/run/zylio-booking/ci/use-pool
+            -e NEXT_PUBLIC_DISABLE_SIGNUP_FILE=/run/zylio-booking/ci/disable-signup
+          )
           docker network create "$smoke_network"
           docker run -d --platform "${{ matrix.platform }}" --name "$smoke_db" --network "$smoke_network" -e POSTGRES_USER=cal -e POSTGRES_PASSWORD=cal -e POSTGRES_DB=calendso "$SMOKE_POSTGRES_IMAGE"
           until docker exec "$smoke_db" pg_isready -U cal -d calendso; do sleep 1; done
-          docker run --rm --network "$smoke_network" --cap-drop ALL --cap-add SETUID --cap-add SETGID --security-opt no-new-privileges --mount "type=bind,source=$smoke_dir,target=/run/zylio-booking/ci,readonly" --entrypoint /calcom/scripts/qualification-entrypoint.sh "${IMAGE}@${{ steps.build.outputs.digest }}" migrate
-          docker run -d --name "$smoke_web" --network "$smoke_network" --cap-drop ALL --cap-add SETUID --cap-add SETGID --security-opt no-new-privileges --mount "type=bind,source=$smoke_dir,target=/run/zylio-booking/ci,readonly" --entrypoint /calcom/scripts/qualification-entrypoint.sh "${IMAGE}@${{ steps.build.outputs.digest }}" web
+          docker run --rm --platform "${{ matrix.platform }}" --network "$smoke_network" --cap-drop ALL --cap-add SETUID --cap-add SETGID --security-opt no-new-privileges --mount "type=bind,source=$smoke_dir,target=/run/zylio-booking/ci,readonly" "${runtime_file_args[@]}" --entrypoint /calcom/scripts/qualification-entrypoint.sh "${IMAGE}@${{ steps.build.outputs.digest }}" migrate
+          docker run -d --platform "${{ matrix.platform }}" --name "$smoke_web" --network "$smoke_network" --cap-drop ALL --cap-add SETUID --cap-add SETGID --security-opt no-new-privileges --mount "type=bind,source=$smoke_dir,target=/run/zylio-booking/ci,readonly" "${runtime_file_args[@]}" --entrypoint /calcom/scripts/qualification-entrypoint.sh "${IMAGE}@${{ steps.build.outputs.digest }}" web
           for attempt in $(seq 1 60); do docker exec "$smoke_web" node -e "fetch('http://127.0.0.1:3000').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))" && break; sleep 2; done
           docker exec "$smoke_web" node -e "fetch('http://127.0.0.1:3000').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
           printf '{"platform":"${{ matrix.platform }}","digest":"${{ steps.build.outputs.digest }}","runtimeSmoke":"pass"}\n' > /tmp/digests/runtime-smoke-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}.json

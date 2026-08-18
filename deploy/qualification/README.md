@@ -35,7 +35,10 @@ The native runtime smoke also pins PostgreSQL 16.10 Bookworm by its
 multi-platform OCI index digest. The static qualification verifier checks that
 exact pin, CI inspects the index for the native descriptor before building, and
 Docker must resolve the matching AMD64 or ARM64 image on the corresponding
-runner before migrations or web health can pass.
+runner before migrations or web health can pass. Because the smoke invokes
+Docker directly rather than Compose, it passes the same exact nineteen
+`*_FILE` mappings to both the migration and web containers; the static verifier
+checks those paths against the runtime contract.
 
 CI runs Trivy from an immutable official multi-platform container digest and
 forces registry-only image resolution; the scanner never receives the host
