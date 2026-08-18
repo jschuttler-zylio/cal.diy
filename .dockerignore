@@ -32,5 +32,7 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
-# Examples and docs
-docs
+# Root documentation is not part of the image build context. Workspace sources
+# under apps/docs and example-apps remain available so Yarn can enforce the
+# repository lockfile without silently deleting workspaces.
+docs/**

@@ -54,7 +54,9 @@ for (const required of [
   "provenance: mode=max",
   "sbom: true",
   "gitleaks/gitleaks-action@",
-  "aquasecurity/trivy-action@",
+  "TRIVY_IMAGE: ghcr.io/aquasecurity/trivy@sha256:a22415a38938a56c379387a8163fcb0ce38b10ace73e593475d3658d578b2436",
+  "--image-src remote",
+  "enforce-trivy-report.mjs",
   "write-image-manifest.mjs",
   "Runtime smoke on the native runner with PostgreSQL",
   "verify-contract-hashes.mjs",
@@ -64,7 +66,8 @@ for (const required of [
   "SMOKE_POSTGRES_PLATFORMS: linux/amd64,linux/arm64",
   "NEXT_PUBLIC_DISABLE_SIGNUP=true",
   "CALCOM_TELEMETRY_DISABLED=1",
-  "apps/web/**",
+  "apps/**",
+  "example-apps/**",
   "packages/**",
   "scripts/**",
   "deploy/qualification/**",
@@ -80,11 +83,20 @@ if (!entrypoint.includes("_FILE") || !entrypoint.includes("setpriv --reuid=node 
 }
 if (!start.includes("exec setpriv --reuid=node --regid=node --init-groups yarn start")) throw new Error("web process does not drop root after placeholder replacement");
 if (workflow.includes("npx --yes ajv-cli")) throw new Error("CI downloads an unreviewed schema validator");
+if (workflow.includes("aquasecurity/trivy-action@") || workflow.includes("/var/run/docker.sock")) {
+  throw new Error("Trivy must run from the pinned official container without the Docker socket");
+}
 const nodeStages = dockerfile.split(/\r?\n/).filter((line) => line.startsWith("FROM ") && line.includes("node:"));
 if (nodeStages.length !== 3 || nodeStages.some((line) => !line.includes("node:20.20.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5"))) {
   throw new Error("every Node Docker stage must use the verified immutable multi-architecture digest");
 }
 if (!dockerfile.includes("RUN yarn install --immutable")) throw new Error("Docker build does not enforce the committed Yarn lockfile");
+if (!dockerfile.includes("COPY apps ./apps") || !dockerfile.includes("COPY example-apps ./example-apps")) {
+  throw new Error("immutable install does not receive the complete declared workspace graph");
+}
+if (!read(".dockerignore").includes("docs/**") || read(".dockerignore").split(/\r?\n/).includes("docs")) {
+  throw new Error("Docker context excludes a declared documentation workspace");
+}
 for (const forbidden of ["npx", "apt-get", "wget", "gosu", "netcat-openbsd"]) {
   if (dockerfile.includes(forbidden)) throw new Error(`Dockerfile contains forbidden mutable/runtime package mechanism: ${forbidden}`);
 }

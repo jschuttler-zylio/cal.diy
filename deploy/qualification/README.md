@@ -23,9 +23,17 @@ to `NEXT_PUBLIC_DISABLE_SIGNUP=true`.
 
 Every Docker build stage uses the same verified multi-architecture Node 20.20.2
 Bookworm manifest digest. `yarn install --immutable` rejects any lockfile
-change. The frozen source-image schema has no base-image field, so the OCI
+change; the builder receives the complete declared workspace graph so a
+partial Docker context cannot silently rewrite the lock. The frozen
+source-image schema has no base-image field, so the OCI
 BuildKit provenance and CycloneDX SBOM artifacts are the authoritative record
 of this base digest and its resolved platform descriptors.
+
+CI runs Trivy from an immutable official multi-platform container digest and
+forces registry-only image resolution; the scanner never receives the host
+Docker socket. Raw JSON and SBOM output are collected before policy evaluation.
+Malformed output, any secret finding, or any HIGH/CRITICAL vulnerability blocks
+the image manifest, while the raw reports remain downloadable for review.
 
 The pinned Debian base must provide `setpriv`; the image build fails immediately
 if it does not. `setpriv` drops the root bootstrap process to `node` after URL

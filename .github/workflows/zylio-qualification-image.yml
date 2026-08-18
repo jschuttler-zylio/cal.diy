@@ -13,7 +13,8 @@ on:
       - yarn.lock
       - turbo.json
       - i18n.json
-      - apps/web/**
+      - apps/**
+      - example-apps/**
       - packages/**
       - scripts/**
       - deploy/qualification/**
@@ -31,6 +32,7 @@ env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/cal-diy
   SMOKE_POSTGRES_IMAGE: docker.io/library/postgres:16.10-bookworm@sha256:6302e5605162d79d9c98bbd0561fe6f217d0ffeea42e3cb024765e152d17046a
   SMOKE_POSTGRES_PLATFORMS: linux/amd64,linux/arm64
+  TRIVY_IMAGE: ghcr.io/aquasecurity/trivy@sha256:a22415a38938a56c379387a8163fcb0ce38b10ace73e593475d3658d578b2436
 
 jobs:
   build-and-publish:
@@ -156,30 +158,47 @@ jobs:
           test -n "$index_digest"
           printf '%s' "$index_digest" > multi-platform-digest.txt
           echo "digest=$index_digest" >> "$GITHUB_OUTPUT"
-      - name: Scan the published digest (does not claim a pass)
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
-        with:
-          image-ref: ${{ env.IMAGE }}@${{ steps.index.outputs.digest }}
-          format: json
-          output: trivy.json
-          exit-code: "1"
-          severity: CRITICAL,HIGH
-      - name: Export a downloadable CycloneDX SBOM
-        if: always()
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
-        with:
-          image-ref: ${{ env.IMAGE }}@${{ steps.index.outputs.digest }}
-          format: cyclonedx
-          output: sbom.cdx.json
-      - name: Assemble hashed qualification evidence manifest
-        if: success()
+      - name: Scan the published digest without exposing the Docker socket
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p qualification-artifacts/sbom qualification-artifacts/scans
-          cp sbom.cdx.json qualification-artifacts/sbom/sbom.cdx.json
-          cp trivy.json qualification-artifacts/scans/vulnerability.json
+          set -eu
+          mkdir -p qualification-artifacts/scans "$RUNNER_TEMP/trivy-cache"
+          docker run --rm --platform linux/amd64 \
+            -e TRIVY_USERNAME -e TRIVY_PASSWORD \
+            -v "$PWD/qualification-artifacts/scans:/out" \
+            -v "$RUNNER_TEMP/trivy-cache:/cache" \
+            "$TRIVY_IMAGE" image --cache-dir /cache --skip-version-check \
+            --image-src remote --scanners vuln --format json --exit-code 0 \
+            --output /out/vulnerability.json \
+            "${IMAGE}@${{ steps.index.outputs.digest }}"
+      - name: Export a downloadable CycloneDX SBOM
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          mkdir -p qualification-artifacts/sbom "$RUNNER_TEMP/trivy-cache"
+          docker run --rm --platform linux/amd64 \
+            -e TRIVY_USERNAME -e TRIVY_PASSWORD \
+            -v "$PWD/qualification-artifacts/sbom:/out" \
+            -v "$RUNNER_TEMP/trivy-cache:/cache" \
+            "$TRIVY_IMAGE" image --cache-dir /cache --skip-version-check \
+            --image-src remote --format cyclonedx \
+            --output /out/sbom.cdx.json \
+            "${IMAGE}@${{ steps.index.outputs.digest }}"
+      - name: Collect raw evidence before applying scan policy
+        run: |
           cp /tmp/secret-scan/secret-scan.json qualification-artifacts/scans/secret.json
           cp /tmp/runtime-smoke-evidence.json qualification-artifacts/runtime-smoke-evidence.json
           node scripts/qualification/generate-manifests.mjs --output qualification-artifacts
+      - name: Enforce zero secret, HIGH, or CRITICAL findings
+        run: |
+          node scripts/qualification/enforce-trivy-report.mjs secret qualification-artifacts/scans/secret.json
+          node scripts/qualification/enforce-trivy-report.mjs vulnerability qualification-artifacts/scans/vulnerability.json
+      - name: Assemble hashed qualification evidence manifest
+        run: |
           cd qualification-artifacts
           node ../scripts/qualification/write-image-manifest.mjs \
             --output image-manifest.json \
@@ -212,14 +231,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Export secret scan evidence
         if: always()
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
-        with:
-          scan-type: fs
-          scan-ref: .
-          scanners: secret
-          format: json
-          output: secret-scan.json
-          exit-code: "1"
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/trivy-secret-out" "$RUNNER_TEMP/trivy-cache"
+          docker run --rm --platform linux/amd64 \
+            -v "$GITHUB_WORKSPACE:/work:ro" \
+            -v "$RUNNER_TEMP/trivy-secret-out:/out" \
+            -v "$RUNNER_TEMP/trivy-cache:/cache" \
+            "$TRIVY_IMAGE" fs --cache-dir /cache --skip-version-check \
+            --scanners secret --format json --exit-code 0 \
+            --output /out/secret-scan.json /work
+          cp "$RUNNER_TEMP/trivy-secret-out/secret-scan.json" secret-scan.json
+          node scripts/qualification/enforce-trivy-report.mjs secret secret-scan.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
