@@ -266,6 +266,8 @@ for (const required of [
   "rm -rf node_modules/@calcom node_modules/@coss",
   "ln -s ../../packages/prisma node_modules/@calcom/prisma",
   "RUN rm -rf /calcom/node_modules/@prisma",
+  "command -v unzip",
+  "unzip -q .yarn/cache/@prisma-driver-adapter-utils-npm-6.16.1-37fd39f74c-0866fce22f.zip",
 ]) {
   if (!dockerfile.includes(required)) throw new Error(`runtime COPY allowlist is missing ${required}`);
 }
@@ -277,6 +279,9 @@ if (
   dockerfile.includes("cp -a node_modules")
 ) {
   throw new Error("focused Prisma dependency closure is not proven before and after the stage handoff");
+}
+if (dockerfile.includes("rm -rf node_modules/.cache .yarn/cache")) {
+  throw new Error("builder removes the immutable cache before the focused Prisma repair");
 }
 for (const required of [
   "yarn --cwd packages/embeds/embed-core vite build --config ../../../scripts/qualification/seed-bundle.config.mjs",

@@ -75,6 +75,11 @@ package content is not reconstructed through an intermediate copy. Before the
 focused closure is overlaid, the runner removes any partially traced `@prisma`
 namespace; both stages then assert the exact nested adapter utility used by the
 seed's Prisma client.
+Yarn's production focus currently retains the exact 6.16.1 nested adapter
+package metadata without its `dist` payload. The build restores only that
+package from the immutable install's checksum-verified cache archive, named
+exactly in the Dockerfile, and fails before publication if either side of the
+stage handoff lacks its executable module.
 The native smoke runs migration, app-store seed, the standalone web server, a
 public auth API request, a dynamic logo/image request, and an avatar fallback
 route against PostgreSQL before it can report `runtimeSmoke: pass`.

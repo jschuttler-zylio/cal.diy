@@ -45,6 +45,12 @@ test("runtime image is target-native, traced, and excludes build/test closures",
   );
   assert.match(dockerfile, /ln -s \.\.\/\.\.\/packages\/prisma node_modules\/@calcom\/prisma/);
   assert.match(dockerfile, /RUN rm -rf \/calcom\/node_modules\/@prisma/);
+  assert.match(
+    dockerfile,
+    /unzip -q \.yarn\/cache\/@prisma-driver-adapter-utils-npm-6\.16\.1-37fd39f74c-0866fce22f\.zip/
+  );
+  assert.match(dockerfile, /command -v unzip/);
+  assert.doesNotMatch(dockerfile, /rm -rf node_modules\/\.cache \.yarn\/cache/);
   assert.equal(
     (
       dockerfile.match(

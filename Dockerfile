@@ -62,7 +62,7 @@ RUN rm -rf packages/embeds/embed-core/dist apps/web/public/embed \
   && cp -r apps/web/public/embed packages/embeds/embed-core/dist/
 RUN yarn --cwd apps/web workspace @calcom/web run copy-app-store-static
 RUN yarn --cwd apps/web workspace @calcom/web run build
-RUN rm -rf node_modules/.cache .yarn/cache apps/web/.next/cache
+RUN rm -rf node_modules/.cache apps/web/.next/cache
 
 # This stage runs on the target platform because no Docker stage pins a host
 # platform. It keeps only the declared production closure needed by the
@@ -82,10 +82,17 @@ RUN find node_modules -depth -type d \( \
       -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \
       -path '*/@playwright' \
     \) -print -quit | grep -q .
-# Keep Yarn's focused dependency tree intact instead of copying hardlinked or
-# nested package content through an intermediate directory. Only workspace
-# aliases are narrowed before the stage is handed to the runner.
-RUN rm -rf node_modules/@calcom node_modules/@coss \
+# Yarn focus retains the exact nested adapter package metadata but not its dist
+# payload. Restore that one checksum-verified immutable-install archive before
+# narrowing workspace aliases and handing the tree to the runner.
+RUN command -v unzip \
+  && rm -rf /tmp/driver-adapter-utils \
+  && mkdir -p /tmp/driver-adapter-utils node_modules/@prisma/adapter-pg/node_modules/@prisma \
+  && unzip -q .yarn/cache/@prisma-driver-adapter-utils-npm-6.16.1-37fd39f74c-0866fce22f.zip -d /tmp/driver-adapter-utils \
+  && rm -rf node_modules/@prisma/adapter-pg/node_modules/@prisma/driver-adapter-utils \
+  && cp -a /tmp/driver-adapter-utils/node_modules/@prisma/driver-adapter-utils node_modules/@prisma/adapter-pg/node_modules/@prisma/driver-adapter-utils \
+  && rm -rf /tmp/driver-adapter-utils \
+  && rm -rf node_modules/@calcom node_modules/@coss \
   && mkdir -p node_modules/@calcom \
   && ln -s ../../packages/prisma node_modules/@calcom/prisma \
   && test -f node_modules/@prisma/adapter-pg/node_modules/@prisma/driver-adapter-utils/dist/index.js
