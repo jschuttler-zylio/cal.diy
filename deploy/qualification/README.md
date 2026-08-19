@@ -34,25 +34,34 @@ Yarn, Turbo, or writable build cache. It does not make `/calcom` or its built
 assets writable to the web process.
 The profile does not add `DAC_OVERRIDE` or make any runtime path world-writable.
 
-Every Node build/runtime stage uses the verified multi-architecture
+The published runner uses the verified multi-architecture
 `node:20-bookworm-slim` manifest digest
 `sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0`
-(the inspected AMD64 descriptor reports Node 20.20.2). No stage is pinned to
-`BUILDPLATFORM`: each native runner installs and builds its own target-architecture
-dependencies. `yarn install --immutable` rejects any lockfile change; the
-builder receives the complete declared workspace graph so a partial Docker
-context cannot silently rewrite the lock. Each native build runs the focused
-Tasker retention and failure-redaction tests before compiling the web
-application. The frozen
+(the inspected AMD64 descriptor reports Node 20.20.2). The target-native builder
+uses a separately verified immutable full-Bookworm Node 20.20.2 index digest
+`sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5`:
+it supplies the upstream native-install toolchain, while that larger base never
+crosses into the published image. No stage is pinned to `BUILDPLATFORM`: each
+native runner installs and builds its own target-architecture dependencies.
+`yarn install --immutable` rejects any lockfile change; the builder receives the
+complete declared workspace graph so a partial Docker context cannot silently
+rewrite the lock. Each native build runs the focused Tasker retention and
+failure-redaction tests before compiling the web application. The frozen
 source-image schema has no base-image field, so the OCI
 BuildKit provenance and CycloneDX SBOM artifacts are the authoritative record
 of this base digest and its resolved platform descriptors.
 
+The embed asset build calls the lockfile-installed Tailwind, Vite, and TypeScript
+binaries directly. It deliberately bypasses an upstream aggregate script that
+uses `npx`, so the Docker build has no mutable package fetch after its immutable
+Yarn install.
+
 The runner is not a copy of the builder. Next standalone output, rooted at the
 monorepo for output tracing, supplies the web runtime. A target-native
 `yarn workspaces focus @calcom/web --production` supplies only the production
-external dependency closure; the image explicitly removes and asserts the
-absence of Depot, the Trigger CLI, esbuild, Vite, and Playwright. Prisma
+external dependency closure; the final image explicitly removes and asserts the
+absence of Depot, the Trigger CLI, esbuild, Vite, and Playwright across both the
+focused closure and traced output. Prisma
 migration and app-store seed keep only their narrow local maintenance roots
 (`packages/prisma`, `packages/app-store`, local `prisma`, and local `ts-node`).
 The native smoke runs migration, app-store seed, the standalone web server, a

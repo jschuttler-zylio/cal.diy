@@ -210,19 +210,29 @@ const nodeStages = dockerfile
   .filter((line) => line.startsWith("FROM ") && line.includes("node:"));
 if (
   nodeStages.length !== 2 ||
-  nodeStages.some(
-    (line) =>
-      !line.includes(
-        "node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0"
-      )
+  !nodeStages[0].includes(
+    "node:20.20.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5"
+  ) ||
+  !nodeStages[1].includes(
+    "node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0"
   )
 ) {
-  throw new Error("every runtime Node stage must use the verified immutable slim multi-architecture digest");
+  throw new Error(
+    "Docker builder and slim runner must use their verified immutable multi-architecture digests"
+  );
 }
 if (/--platform=\$BUILDPLATFORM/.test(dockerfile))
   throw new Error("target image must not copy BUILDPLATFORM dependencies into the runtime");
 if (!dockerfile.includes("RUN yarn install --immutable"))
   throw new Error("Docker build does not enforce the committed Yarn lockfile");
+if (
+  dockerfile.includes("workspace @calcom/embed-core run build") ||
+  !dockerfile.includes("workspace @calcom/embed-core run tailwind") ||
+  !dockerfile.includes("yarn --cwd packages/embeds/embed-core vite build") ||
+  !dockerfile.includes("yarn --cwd packages/embeds/embed-core tsc --emitDeclarationOnly")
+) {
+  throw new Error("Docker must compile the embed with lockfile-installed local tools, not its npx wrapper");
+}
 if (
   !dockerfile.includes(
     "RUN yarn vitest run packages/features/tasker/internal-tasker.test.ts packages/features/tasker/task-processor.test.ts"
@@ -244,6 +254,8 @@ if (!dockerfile.includes("RUN command -v setpriv"))
   throw new Error("pinned base does not prove its privilege-drop primitive");
 for (const required of [
   "RUN yarn workspaces focus @calcom/web --production",
+  "FROM node:20.20.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS builder",
+  "FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS runner",
   "COPY --from=builder --chown=node:node /calcom/apps/web/.next/standalone ./",
   "COPY --from=builder --chown=node:node /calcom/apps/web/public ./apps/web/public",
   "COPY --from=builder --chown=node:node /calcom/apps/web/.next/static ./apps/web/.next/static",

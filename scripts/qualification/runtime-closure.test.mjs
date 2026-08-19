@@ -16,8 +16,21 @@ test("runtime image is target-native, traced, and excludes build/test closures",
     dockerfile,
     /node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0/
   );
+  assert.match(
+    dockerfile,
+    /node:20\.20\.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5/
+  );
+  const finalRuntimePrune = dockerfile.indexOf("RUN find /calcom -depth -type d");
+  const standaloneCopy = dockerfile.indexOf(
+    "COPY --from=builder --chown=node:node /calcom/apps/web/.next/standalone ./"
+  );
+  assert.ok(finalRuntimePrune > standaloneCopy, "traced standalone output is pruned after it is copied");
+  assert.match(dockerfile, /RUN find \/calcom -depth -type d[\s\S]*?-exec rm -rf \{\} \+/);
   assert.doesNotMatch(dockerfile, /--platform=\$BUILDPLATFORM/);
   assert.match(dockerfile, /RUN yarn workspaces focus @calcom\/web --production/);
+  assert.doesNotMatch(dockerfile, /workspace @calcom\/embed-core run build/);
+  assert.match(dockerfile, /workspace @calcom\/embed-core run tailwind/);
+  assert.match(dockerfile, /yarn --cwd packages\/embeds\/embed-core vite build/);
   assert.match(dockerfile, /COPY --from=builder --chown=node:node \/calcom\/apps\/web\/.next\/standalone \./);
   assert.match(
     dockerfile,

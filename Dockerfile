@@ -1,4 +1,6 @@
-FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS builder
+# The full, target-native builder carries the toolchain required by upstream
+# native install hooks. The published runner below remains the slim digest.
+FROM node:20.20.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS builder
 
 WORKDIR /calcom
 
@@ -47,7 +49,14 @@ RUN yarn install --immutable
 RUN yarn vitest run packages/features/tasker/internal-tasker.test.ts packages/features/tasker/task-processor.test.ts
 # Build and make embed servable from web/public/embed folder
 RUN yarn workspace @calcom/trpc run build
-RUN yarn --cwd packages/embeds/embed-core workspace @calcom/embed-core run build
+# The upstream aggregate build script resolves ad hoc cleanup/copy tooling. Use
+# only immutable-install local binaries here so the Docker build cannot fetch a
+# mutable package; this is a fresh builder so clearing these outputs is bounded.
+RUN rm -rf packages/embeds/embed-core/dist apps/web/public/embed \
+  && yarn --cwd packages/embeds/embed-core workspace @calcom/embed-core run tailwind \
+  && yarn --cwd packages/embeds/embed-core vite build \
+  && yarn --cwd packages/embeds/embed-core tsc --emitDeclarationOnly --declarationDir dist \
+  && cp -r apps/web/public/embed packages/embeds/embed-core/dist/
 RUN yarn --cwd apps/web workspace @calcom/web run copy-app-store-static
 RUN yarn --cwd apps/web workspace @calcom/web run build
 RUN rm -rf node_modules/.cache .yarn/cache apps/web/.next/cache
@@ -99,7 +108,12 @@ RUN chmod +x scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh 
 # dropping to node. With all Linux capabilities removed, UID 0 cannot bypass
 # ownership, so make precisely those replacement targets root-owned and retain
 # node read/execute access. No runtime path is world-writable.
-RUN chown -R root:root /calcom/apps/web/.next /calcom/apps/web/public \
+RUN find /calcom -depth -type d \( \
+      -path '*/@depot' -o -path '*/trigger.dev' -o -path '*/@esbuild' -o \
+      -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \
+      -path '*/@playwright' \
+    \) -exec rm -rf {} + \
+  && chown -R root:root /calcom/apps/web/.next /calcom/apps/web/public \
   && find /calcom/apps/web/.next /calcom/apps/web/public -type d -exec chmod 0755 {} + \
   && find /calcom/apps/web/.next /calcom/apps/web/public -type f -exec chmod u=rwX,go=rX {} + \
   && ! find /calcom -type d \( \
