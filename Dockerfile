@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM node:20.20.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS builder
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS builder
 
 WORKDIR /calcom
 
@@ -52,39 +52,49 @@ RUN yarn --cwd apps/web workspace @calcom/web run copy-app-store-static
 RUN yarn --cwd apps/web workspace @calcom/web run build
 RUN rm -rf node_modules/.cache .yarn/cache apps/web/.next/cache
 
-FROM node:20.20.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS builder-two
+# This stage runs on the target platform because no Docker stage pins a host
+# platform. It keeps only the declared production closure needed by the
+# traced web server and the explicit Prisma/seed maintenance commands.
+FROM builder AS runtime-deps
+
+RUN yarn workspaces focus @calcom/web --production
+RUN find node_modules -depth -type d \( \
+      -path '*/@depot' -o -path '*/trigger.dev' -o -path '*/@esbuild' -o \
+      -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \
+      -path '*/@playwright' \
+    \) -exec rm -rf {} + \
+  && test -x node_modules/.bin/prisma \
+  && test -x node_modules/.bin/ts-node \
+  && ! find node_modules -type d \( \
+      -path '*/@depot' -o -path '*/trigger.dev' -o -path '*/@esbuild' -o \
+      -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \
+      -path '*/@playwright' \
+    \) -print -quit | grep -q .
+# Next standalone owns traced workspace links. Merge only production external
+# dependencies into it, rather than replacing those traced links with a full
+# monorepo node_modules tree.
+RUN mkdir /runtime-node_modules \
+  && cp -a node_modules/. /runtime-node_modules/ \
+  && rm -rf /runtime-node_modules/@calcom /runtime-node_modules/@coss
+
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS runner
 
 WORKDIR /calcom
-ARG NEXT_PUBLIC_WEBAPP_URL=http://localhost:3000
 
-ENV NODE_ENV=production
+RUN command -v setpriv && command -v sed && command -v egrep && command -v find
 
-COPY package.json .yarnrc.yml turbo.json i18n.json ./
-COPY .yarn ./.yarn
-COPY --from=builder /calcom/yarn.lock ./yarn.lock
-COPY --from=builder /calcom/node_modules ./node_modules
-COPY --from=builder /calcom/packages ./packages
-COPY --from=builder /calcom/apps/web ./apps/web
-# E2E sources are not runtime dependencies and contain upstream fixture literals.
-RUN rm -rf apps/web/playwright
-COPY --from=builder /calcom/packages/prisma/schema.prisma ./prisma/schema.prisma
-COPY scripts scripts
-RUN chmod +x scripts/*
+# The standalone output has its traced workspace runtime tree. Only the focused
+# production external closure and the two explicit maintenance source roots are
+# added; no build/test tree is copied into the published image.
+COPY --from=builder --chown=node:node /calcom/apps/web/.next/standalone ./
+COPY --from=builder --chown=node:node /calcom/apps/web/public ./apps/web/public
+COPY --from=builder --chown=node:node /calcom/apps/web/.next/static ./apps/web/.next/static
+COPY --from=runtime-deps --chown=node:node /runtime-node_modules ./node_modules
+COPY --from=builder --chown=node:node /calcom/packages/prisma ./packages/prisma
+COPY --from=builder --chown=node:node /calcom/packages/app-store ./packages/app-store
+COPY --chown=node:node scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh scripts/qualification-web-start.sh scripts/seed-app-store.ts ./scripts/
 
-# Save value used during this build stage. If NEXT_PUBLIC_WEBAPP_URL and BUILT_NEXT_PUBLIC_WEBAPP_URL differ at
-# run-time, then start.sh will find/replace static values again.
-ENV NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL \
-  BUILT_NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL
-
-RUN scripts/replace-placeholder.sh http://NEXT_PUBLIC_WEBAPP_URL_PLACEHOLDER ${NEXT_PUBLIC_WEBAPP_URL}
-
-FROM node:20.20.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS runner
-
-WORKDIR /calcom
-
-RUN command -v setpriv
-
-COPY --from=builder-two --chown=node:node /calcom ./
+RUN chmod +x scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh scripts/qualification-web-start.sh
 # The upstream runtime URL replacement writes only built/static web assets before
 # dropping to node. With all Linux capabilities removed, UID 0 cannot bypass
 # ownership, so make precisely those replacement targets root-owned and retain
@@ -92,17 +102,20 @@ COPY --from=builder-two --chown=node:node /calcom ./
 RUN chown -R root:root /calcom/apps/web/.next /calcom/apps/web/public \
   && find /calcom/apps/web/.next /calcom/apps/web/public -type d -exec chmod 0755 {} + \
   && find /calcom/apps/web/.next /calcom/apps/web/public -type f -exec chmod u=rwX,go=rX {} + \
-  && mkdir -p /home/node/.cache/turbo \
-  && chown node:node /home/node/.cache /home/node/.cache/turbo \
-  && chmod 0700 /home/node/.cache /home/node/.cache/turbo
+  && ! find /calcom -type d \( \
+      -path '*/@depot' -o -path '*/trigger.dev' -o -path '*/@esbuild' -o \
+      -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \
+      -path '*/@playwright' \
+    \) -print -quit | grep -q .
+
 ARG NEXT_PUBLIC_WEBAPP_URL=http://localhost:3000
 ENV NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL \
-  BUILT_NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL
+  BUILT_NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL \
+  NODE_ENV=production
 
-ENV NODE_ENV=production
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=30s --retries=5 \
   CMD node -e "fetch('http://127.0.0.1:3000').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
 
-CMD ["/calcom/scripts/start.sh"]
+CMD ["/calcom/scripts/qualification-entrypoint.sh", "web"]

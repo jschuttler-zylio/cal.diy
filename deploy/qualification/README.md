@@ -29,22 +29,35 @@ targets, `apps/web/.next` and `apps/web/public`, are root-owned with directories
 mode `0755` and files `u=rwX,go=rX`. This allows the capability-dropped startup
 root to create `sed` temporary files and atomically replace matching assets;
 the web server then drops to `node`, which retains read/execute access only. Its
-launch explicitly sets `HOME=/home/node` and `XDG_CONFIG_HOME=/home/node/.config`
-so Yarn does not inherit the pre-drop root home. Turbo's documented CLI
-`--cache-dir` is fixed to `/home/node/.cache/turbo`, a mode-`0700`, node-owned
-runtime cache; it does not make `/calcom` or its built assets writable to the
-web process.
+launch uses the traced Next standalone server directly, so it carries no runtime
+Yarn, Turbo, or writable build cache. It does not make `/calcom` or its built
+assets writable to the web process.
 The profile does not add `DAC_OVERRIDE` or make any runtime path world-writable.
 
-Every Docker build stage uses the same verified multi-architecture Node 20.20.2
-Bookworm manifest digest. `yarn install --immutable` rejects any lockfile
-change; the builder receives the complete declared workspace graph so a
-partial Docker context cannot silently rewrite the lock. Each native build
-runs the focused Tasker retention and failure-redaction tests before compiling
-the web application. The frozen
+Every Node build/runtime stage uses the verified multi-architecture
+`node:20-bookworm-slim` manifest digest
+`sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0`
+(the inspected AMD64 descriptor reports Node 20.20.2). No stage is pinned to
+`BUILDPLATFORM`: each native runner installs and builds its own target-architecture
+dependencies. `yarn install --immutable` rejects any lockfile change; the
+builder receives the complete declared workspace graph so a partial Docker
+context cannot silently rewrite the lock. Each native build runs the focused
+Tasker retention and failure-redaction tests before compiling the web
+application. The frozen
 source-image schema has no base-image field, so the OCI
 BuildKit provenance and CycloneDX SBOM artifacts are the authoritative record
 of this base digest and its resolved platform descriptors.
+
+The runner is not a copy of the builder. Next standalone output, rooted at the
+monorepo for output tracing, supplies the web runtime. A target-native
+`yarn workspaces focus @calcom/web --production` supplies only the production
+external dependency closure; the image explicitly removes and asserts the
+absence of Depot, the Trigger CLI, esbuild, Vite, and Playwright. Prisma
+migration and app-store seed keep only their narrow local maintenance roots
+(`packages/prisma`, `packages/app-store`, local `prisma`, and local `ts-node`).
+The native smoke runs migration, app-store seed, the standalone web server, a
+public auth API request, a dynamic logo/image request, and an avatar fallback
+route against PostgreSQL before it can report `runtimeSmoke: pass`.
 
 The native runtime smoke also pins PostgreSQL 16.10 Bookworm by its
 multi-platform OCI index digest. The static qualification verifier checks that
@@ -82,10 +95,10 @@ secrets.
 The pinned Debian base must provide `setpriv`; the image build fails immediately
 if it does not. `setpriv` drops the root bootstrap process to `node` after URL
 replacement, avoiding a mutable apt package install. The runtime tree is owned
-by `node` so Next/Turbo can write only their image-local runtime files after the
-drop. A failed native smoke emits only a bounded log tail after replacing every
-mounted runtime-file value and credential-shaped URI segment. Health checks use
-Node's built-in `fetch`, so the image carries no additional probe client.
+by `node` except the two bounded placeholder targets. A failed native smoke
+emits only a bounded log tail after replacing every mounted runtime-file value
+and credential-shaped URI segment. Health checks use Node's built-in `fetch`,
+so the image carries no additional probe client.
 
 Migrations and app-store seeding require `--profile maintenance` and use the
 same entrypoint and secret-file loader as web. They are never web startup work.
