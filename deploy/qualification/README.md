@@ -124,9 +124,11 @@ by `node` except the two bounded placeholder targets. A failed native smoke
 emits only a bounded log tail after replacing every mounted runtime-file value
 and credential-shaped URI segment. The smoke alone opts into an 8 KiB-bounded
 server request diagnostic and emits status-only results for the root,
-auth-provider, and logo probes when readiness fails; the deployed profile never
-enables that flag. Health checks use Node's built-in `fetch`, so the image
-carries no additional probe client.
+auth-provider, logo, and avatar probes when either readiness or the final route
+contract fails. It classifies the logo content type only as image/non-image and
+never emits a body or header value; the deployed profile never enables the
+server-error flag. Health checks use Node's built-in `fetch`, so the image carries
+no additional probe client.
 
 Migrations and app-store seeding require `--profile maintenance` and use the
 same entrypoint and secret-file loader as web. They are never web startup work.

@@ -108,6 +108,7 @@ for (const required of [
   'redact-runtime-log.mjs --directory "$smoke_dir"',
   "QUALIFICATION_RUNTIME_DIAGNOSTICS=1",
   "qualification readiness diagnostic=",
+  "qualification route diagnostic=",
   "verify-contract-hashes.mjs",
   "validate-manifests.mjs",
   "verify-runtime-smokes.mjs",
