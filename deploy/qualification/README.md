@@ -64,6 +64,10 @@ absence of Depot, the Trigger CLI, esbuild, Vite, and Playwright across both the
 focused closure and traced output. Prisma
 migration and app-store seed keep only their narrow local maintenance roots
 (`packages/prisma`, `packages/app-store`, local `prisma`, and local `ts-node`).
+The only restored workspace module aliases are `@calcom/prisma` and
+`@calcom/app-store`, each symlinked to those copied roots so the local seed
+entrypoint can resolve its declared imports without restoring the full workspace
+tree.
 The native smoke runs migration, app-store seed, the standalone web server, a
 public auth API request, a dynamic logo/image request, and an avatar fallback
 route against PostgreSQL before it can report `runtimeSmoke: pass`.

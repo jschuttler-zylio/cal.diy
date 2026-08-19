@@ -36,6 +36,11 @@ test("runtime image is target-native, traced, and excludes build/test closures",
     dockerfile,
     /COPY --from=runtime-deps --chown=node:node \/runtime-node_modules \.\/node_modules/
   );
+  assert.match(
+    dockerfile,
+    /ln -s \.\.\/\.\.\/packages\/app-store \/runtime-node_modules\/@calcom\/app-store/
+  );
+  assert.match(dockerfile, /ln -s \.\.\/\.\.\/packages\/prisma \/runtime-node_modules\/@calcom\/prisma/);
   assert.doesNotMatch(dockerfile, /COPY --from=builder \/calcom\/node_modules/);
   assert.doesNotMatch(dockerfile, /COPY --from=builder \/calcom\/packages \.\/packages/);
   assert.match(dockerfile, /! find \/calcom -type d/);

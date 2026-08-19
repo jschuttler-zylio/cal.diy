@@ -263,6 +263,8 @@ for (const required of [
   "COPY --from=builder --chown=node:node /calcom/packages/prisma ./packages/prisma",
   "COPY --from=builder --chown=node:node /calcom/packages/app-store ./packages/app-store",
   "rm -rf /runtime-node_modules/@calcom /runtime-node_modules/@coss",
+  "ln -s ../../packages/app-store /runtime-node_modules/@calcom/app-store",
+  "ln -s ../../packages/prisma /runtime-node_modules/@calcom/prisma",
 ]) {
   if (!dockerfile.includes(required)) throw new Error(`runtime COPY allowlist is missing ${required}`);
 }

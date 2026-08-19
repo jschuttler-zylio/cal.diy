@@ -84,7 +84,10 @@ RUN find node_modules -depth -type d \( \
 # monorepo node_modules tree.
 RUN mkdir /runtime-node_modules \
   && cp -a node_modules/. /runtime-node_modules/ \
-  && rm -rf /runtime-node_modules/@calcom /runtime-node_modules/@coss
+  && rm -rf /runtime-node_modules/@calcom /runtime-node_modules/@coss \
+  && mkdir -p /runtime-node_modules/@calcom \
+  && ln -s ../../packages/app-store /runtime-node_modules/@calcom/app-store \
+  && ln -s ../../packages/prisma /runtime-node_modules/@calcom/prisma
 
 FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS runner
 
