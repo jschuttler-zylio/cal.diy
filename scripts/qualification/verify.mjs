@@ -126,6 +126,12 @@ for (const required of [
 ]) {
   if (!workflow.includes(required)) throw new Error(`workflow missing ${required}`);
 }
+if (!dockerfile.includes("BUILT_NEXT_PUBLIC_WEBAPP_URL=http://NEXT_PUBLIC_WEBAPP_URL_PLACEHOLDER")) {
+  throw new Error("runner startup is not bound to the URL actually compiled into the standalone output");
+}
+if (/BUILT_NEXT_PUBLIC_WEBAPP_URL=\$NEXT_PUBLIC_WEBAPP_URL/.test(dockerfile)) {
+  throw new Error("runner incorrectly claims its compiled URL is the runtime ARG default");
+}
 if (
   !/permissions:\s*\r?\n\s+contents: read\s*\r?\n\s+packages: write\s*\r?\n\s+id-token: write\s*\r?\n\s+attestations: write/.test(
     workflow

@@ -130,6 +130,12 @@ never emits a body or header value; the deployed profile never enables the
 server-error flag. Health checks use Node's built-in `fetch`, so the image carries
 no additional probe client.
 
+The standalone build deliberately retains
+`http://NEXT_PUBLIC_WEBAPP_URL_PLACEHOLDER`. The final runner records that exact
+compiled source as `BUILT_NEXT_PUBLIC_WEBAPP_URL`; startup replaces it with the
+file-materialized tenant URL before dropping privileges. It must not claim the
+runner ARG default was compiled into the standalone output.
+
 Migrations and app-store seeding require `--profile maintenance` and use the
 same entrypoint and secret-file loader as web. They are never web startup work.
 
