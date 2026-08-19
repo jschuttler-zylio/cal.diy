@@ -260,13 +260,23 @@ for (const required of [
   "COPY --from=builder --chown=node:node /calcom/apps/web/.next/standalone ./",
   "COPY --from=builder --chown=node:node /calcom/apps/web/public ./apps/web/public",
   "COPY --from=builder --chown=node:node /calcom/apps/web/.next/static ./apps/web/.next/static",
-  "COPY --from=runtime-deps --chown=node:node /runtime-node_modules ./node_modules",
+  "COPY --from=runtime-deps --chown=node:node /calcom/node_modules ./node_modules",
   "COPY --from=builder --chown=node:node /calcom/packages/prisma ./packages/prisma",
   "COPY --from=builder --chown=node:node /calcom/.qualification/seed/seed-app-store.cjs ./scripts/seed-app-store.cjs",
-  "rm -rf /runtime-node_modules/@calcom /runtime-node_modules/@coss",
-  "ln -s ../../packages/prisma /runtime-node_modules/@calcom/prisma",
+  "rm -rf node_modules/@calcom node_modules/@coss",
+  "ln -s ../../packages/prisma node_modules/@calcom/prisma",
+  "RUN rm -rf /calcom/node_modules/@prisma",
 ]) {
   if (!dockerfile.includes(required)) throw new Error(`runtime COPY allowlist is missing ${required}`);
+}
+if (
+  (
+    dockerfile.match(/@prisma\/adapter-pg\/node_modules\/@prisma\/driver-adapter-utils\/dist\/index\.js/g) ??
+    []
+  ).length !== 2 ||
+  dockerfile.includes("cp -a node_modules")
+) {
+  throw new Error("focused Prisma dependency closure is not proven before and after the stage handoff");
 }
 for (const required of [
   "yarn --cwd packages/embeds/embed-core vite build --config ../../../scripts/qualification/seed-bundle.config.mjs",

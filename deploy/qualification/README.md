@@ -70,6 +70,11 @@ built-ins and `@calcom/prisma`; the maintenance path therefore adds neither an
 app-store nor a lib source tree to the runner. The sole restored maintenance
 workspace alias is `@calcom/prisma`, and the seed loads that TypeScript root
 through the copied local `ts-node` register hook.
+The focused install is handed directly between Docker stages so Yarn's nested
+package content is not reconstructed through an intermediate copy. Before the
+focused closure is overlaid, the runner removes any partially traced `@prisma`
+namespace; both stages then assert the exact nested adapter utility used by the
+seed's Prisma client.
 The native smoke runs migration, app-store seed, the standalone web server, a
 public auth API request, a dynamic logo/image request, and an avatar fallback
 route against PostgreSQL before it can report `runtimeSmoke: pass`.

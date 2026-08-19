@@ -82,14 +82,13 @@ RUN find node_modules -depth -type d \( \
       -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \
       -path '*/@playwright' \
     \) -print -quit | grep -q .
-# Next standalone owns traced workspace links. Merge only production external
-# dependencies into it, rather than replacing those traced links with a full
-# monorepo node_modules tree.
-RUN mkdir /runtime-node_modules \
-  && cp -a node_modules/. /runtime-node_modules/ \
-  && rm -rf /runtime-node_modules/@calcom /runtime-node_modules/@coss \
-  && mkdir -p /runtime-node_modules/@calcom \
-  && ln -s ../../packages/prisma /runtime-node_modules/@calcom/prisma
+# Keep Yarn's focused dependency tree intact instead of copying hardlinked or
+# nested package content through an intermediate directory. Only workspace
+# aliases are narrowed before the stage is handed to the runner.
+RUN rm -rf node_modules/@calcom node_modules/@coss \
+  && mkdir -p node_modules/@calcom \
+  && ln -s ../../packages/prisma node_modules/@calcom/prisma \
+  && test -f node_modules/@prisma/adapter-pg/node_modules/@prisma/driver-adapter-utils/dist/index.js
 
 FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS runner
 
@@ -103,7 +102,10 @@ RUN command -v setpriv && command -v sed && command -v egrep && command -v find
 COPY --from=builder --chown=node:node /calcom/apps/web/.next/standalone ./
 COPY --from=builder --chown=node:node /calcom/apps/web/public ./apps/web/public
 COPY --from=builder --chown=node:node /calcom/apps/web/.next/static ./apps/web/.next/static
-COPY --from=runtime-deps --chown=node:node /runtime-node_modules ./node_modules
+# Output tracing can leave partial third-party package directories. Replace the
+# Prisma namespace atomically with the complete focused production closure.
+RUN rm -rf /calcom/node_modules/@prisma
+COPY --from=runtime-deps --chown=node:node /calcom/node_modules ./node_modules
 COPY --from=builder --chown=node:node /calcom/packages/prisma ./packages/prisma
 COPY --from=builder --chown=node:node /calcom/.qualification/seed/seed-app-store.cjs ./scripts/seed-app-store.cjs
 COPY --chown=node:node scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh scripts/qualification-web-start.sh ./scripts/
@@ -113,7 +115,8 @@ RUN chmod +x scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh 
 # dropping to node. With all Linux capabilities removed, UID 0 cannot bypass
 # ownership, so make precisely those replacement targets root-owned and retain
 # node read/execute access. No runtime path is world-writable.
-RUN find /calcom -depth -type d \( \
+RUN test -f /calcom/node_modules/@prisma/adapter-pg/node_modules/@prisma/driver-adapter-utils/dist/index.js \
+  && find /calcom -depth -type d \( \
       -path '*/@depot' -o -path '*/trigger.dev' -o -path '*/@esbuild' -o \
       -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \
       -path '*/@playwright' \

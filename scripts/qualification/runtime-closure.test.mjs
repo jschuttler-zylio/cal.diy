@@ -27,12 +27,12 @@ test("runtime image is target-native, traced, and excludes build/test closures",
     dockerfile,
     /node:20\.20\.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5/
   );
-  const finalRuntimePrune = dockerfile.indexOf("RUN find /calcom -depth -type d");
+  const finalRuntimePrune = dockerfile.indexOf("find /calcom -depth -type d");
   const standaloneCopy = dockerfile.indexOf(
     "COPY --from=builder --chown=node:node /calcom/apps/web/.next/standalone ./"
   );
   assert.ok(finalRuntimePrune > standaloneCopy, "traced standalone output is pruned after it is copied");
-  assert.match(dockerfile, /RUN find \/calcom -depth -type d[\s\S]*?-exec rm -rf \{\} \+/);
+  assert.match(dockerfile, /find \/calcom -depth -type d[\s\S]*?-exec rm -rf \{\} \+/);
   assert.doesNotMatch(dockerfile, /--platform=\$BUILDPLATFORM/);
   assert.match(dockerfile, /RUN yarn workspaces focus @calcom\/web --production/);
   assert.doesNotMatch(dockerfile, /workspace @calcom\/embed-core run build/);
@@ -41,9 +41,18 @@ test("runtime image is target-native, traced, and excludes build/test closures",
   assert.match(dockerfile, /COPY --from=builder --chown=node:node \/calcom\/apps\/web\/.next\/standalone \./);
   assert.match(
     dockerfile,
-    /COPY --from=runtime-deps --chown=node:node \/runtime-node_modules \.\/node_modules/
+    /COPY --from=runtime-deps --chown=node:node \/calcom\/node_modules \.\/node_modules/
   );
-  assert.match(dockerfile, /ln -s \.\.\/\.\.\/packages\/prisma \/runtime-node_modules\/@calcom\/prisma/);
+  assert.match(dockerfile, /ln -s \.\.\/\.\.\/packages\/prisma node_modules\/@calcom\/prisma/);
+  assert.match(dockerfile, /RUN rm -rf \/calcom\/node_modules\/@prisma/);
+  assert.equal(
+    (
+      dockerfile.match(
+        /@prisma\/adapter-pg\/node_modules\/@prisma\/driver-adapter-utils\/dist\/index\.js/g
+      ) ?? []
+    ).length,
+    2
+  );
   assert.match(
     dockerfile,
     /COPY --from=builder --chown=node:node \/calcom\/\.qualification\/seed\/seed-app-store\.cjs \.\/scripts\/seed-app-store\.cjs/
@@ -57,6 +66,7 @@ test("runtime image is target-native, traced, and excludes build/test closures",
   assert.deepEqual(maintenanceCopies, ["prisma"]);
   assert.doesNotMatch(dockerfile, /COPY --from=builder \/calcom\/node_modules/);
   assert.doesNotMatch(dockerfile, /COPY --from=builder \/calcom\/packages \.\/packages/);
+  assert.doesNotMatch(dockerfile, /cp -a node_modules/);
   assert.match(dockerfile, /! find \/calcom -type d/);
   for (const closure of [
     "@depot",
