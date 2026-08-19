@@ -122,8 +122,11 @@ if it does not. `setpriv` drops the root bootstrap process to `node` after URL
 replacement, avoiding a mutable apt package install. The runtime tree is owned
 by `node` except the two bounded placeholder targets. A failed native smoke
 emits only a bounded log tail after replacing every mounted runtime-file value
-and credential-shaped URI segment. Health checks use Node's built-in `fetch`,
-so the image carries no additional probe client.
+and credential-shaped URI segment. The smoke alone opts into an 8 KiB-bounded
+server request diagnostic and emits status-only results for the root,
+auth-provider, and logo probes when readiness fails; the deployed profile never
+enables that flag. Health checks use Node's built-in `fetch`, so the image
+carries no additional probe client.
 
 Migrations and app-store seeding require `--profile maintenance` and use the
 same entrypoint and secret-file loader as web. They are never web startup work.

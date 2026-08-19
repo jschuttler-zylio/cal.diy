@@ -11,6 +11,7 @@ const seedBundleConfig = read("scripts/qualification/seed-bundle.config.mjs");
 const workflow = read(".github/workflows/zylio-qualification-image.yml");
 const dockerfile = read("Dockerfile");
 const nextConfig = read("apps/web/next.config.ts");
+const instrumentation = read("apps/web/instrumentation.ts");
 const webPackage = JSON.parse(read("apps/web/package.json"));
 const prismaPackage = JSON.parse(read("packages/prisma/package.json"));
 const runtimeLogRedactor = read("scripts/qualification/redact-runtime-log.mjs");
@@ -105,6 +106,8 @@ for (const required of [
   "write-image-manifest.mjs",
   "Runtime smoke on the native runner with PostgreSQL",
   'redact-runtime-log.mjs --directory "$smoke_dir"',
+  "QUALIFICATION_RUNTIME_DIAGNOSTICS=1",
+  "qualification readiness diagnostic=",
   "verify-contract-hashes.mjs",
   "validate-manifests.mjs",
   "verify-runtime-smokes.mjs",
@@ -339,6 +342,12 @@ if (!runtimeLogRedactor.includes("redactRuntimeLog") || !runtimeLogRedactor.incl
   throw new Error("runtime smoke failure logs are not value-redacted");
 if (!runtimeLogRedactor.includes("secretFiles"))
   throw new Error("runtime smoke redactor does not limit literal replacement to secret files");
+if (
+  !instrumentation.includes('process.env.QUALIFICATION_RUNTIME_DIAGNOSTICS === "1"') ||
+  !instrumentation.includes("diagnostic.slice(0, 8192)")
+) {
+  throw new Error("qualification request diagnostics are not opt-in and bounded");
+}
 if (
   /\bnpx\b/.test(entrypoint) ||
   !entrypoint.includes("/calcom/node_modules/.bin/prisma") ||

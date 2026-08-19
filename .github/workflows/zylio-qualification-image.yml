@@ -147,6 +147,7 @@ jobs:
             -e EMAIL_FROM_NAME_FILE=/run/zylio-booking/ci/smtp-from-name
             -e USE_POOL_FILE=/run/zylio-booking/ci/use-pool
             -e NEXT_PUBLIC_DISABLE_SIGNUP_FILE=/run/zylio-booking/ci/disable-signup
+            -e QUALIFICATION_RUNTIME_DIAGNOSTICS=1
           )
           docker network create "$smoke_network"
           docker run -d --platform "${{ matrix.platform }}" --name "$smoke_db" --network "$smoke_network" -e POSTGRES_USER=cal -e POSTGRES_PASSWORD=cal -e POSTGRES_DB=calendso "$SMOKE_POSTGRES_IMAGE"
@@ -155,7 +156,7 @@ jobs:
           docker run --rm --platform "${{ matrix.platform }}" --network "$smoke_network" --cap-drop ALL --cap-add SETUID --cap-add SETGID --security-opt no-new-privileges --mount "type=bind,source=$smoke_dir,target=/run/zylio-booking/ci,readonly" "${runtime_file_args[@]}" --entrypoint /calcom/scripts/qualification-entrypoint.sh "${IMAGE}@${{ steps.build.outputs.digest }}" seed-app-store
           docker run -d --platform "${{ matrix.platform }}" --name "$smoke_web" --network "$smoke_network" --cap-drop ALL --cap-add SETUID --cap-add SETGID --security-opt no-new-privileges --mount "type=bind,source=$smoke_dir,target=/run/zylio-booking/ci,readonly" "${runtime_file_args[@]}" --entrypoint /calcom/scripts/qualification-entrypoint.sh "${IMAGE}@${{ steps.build.outputs.digest }}" web
           for attempt in $(seq 1 60); do docker exec "$smoke_web" node -e "fetch('http://127.0.0.1:3000').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))" && break; sleep 2; done
-          docker exec "$smoke_web" node -e "fetch('http://127.0.0.1:3000').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+          docker exec "$smoke_web" node -e "Promise.all(['/','/api/auth/providers','/api/logo?type=favicon-16'].map(async (path) => { try { const response = await fetch('http://127.0.0.1:3000' + path, { signal: AbortSignal.timeout(5000) }); return { path: new URL(response.url).pathname, status: response.status }; } catch (error) { return { path, error: error instanceof Error ? error.name : 'UnknownError', code: error?.cause?.code ?? 'none' }; } })).then((results) => { const root = results[0]; if (!('status' in root) || root.status < 200 || root.status >= 300) console.error('qualification readiness diagnostic=' + JSON.stringify(results)); process.exit('status' in root && root.status >= 200 && root.status < 300 ? 0 : 1); })"
           docker exec "$smoke_web" node -e "Promise.all([fetch('http://127.0.0.1:3000/api/auth/providers'), fetch('http://127.0.0.1:3000/api/logo?type=favicon-16'), fetch('http://127.0.0.1:3000/api/avatar/qualification-smoke', { redirect: 'manual' })]).then(([providers, logo, avatar]) => process.exit(providers.ok && logo.ok && logo.headers.get('content-type')?.startsWith('image/') && avatar.status === 302 ? 0 : 1)).catch(() => process.exit(1))"
           printf '{"platform":"${{ matrix.platform }}","digest":"${{ steps.build.outputs.digest }}","runtimeSmoke":"pass"}\n' > /tmp/digests/runtime-smoke-${{ matrix.platform == 'linux/arm64' && 'arm64' || 'amd64' }}.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
