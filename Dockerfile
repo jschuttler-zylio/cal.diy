@@ -87,6 +87,7 @@ RUN mkdir /runtime-node_modules \
   && rm -rf /runtime-node_modules/@calcom /runtime-node_modules/@coss \
   && mkdir -p /runtime-node_modules/@calcom \
   && ln -s ../../packages/app-store /runtime-node_modules/@calcom/app-store \
+  && ln -s ../../packages/lib /runtime-node_modules/@calcom/lib \
   && ln -s ../../packages/prisma /runtime-node_modules/@calcom/prisma
 
 FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS runner
@@ -104,6 +105,9 @@ COPY --from=builder --chown=node:node /calcom/apps/web/.next/static ./apps/web/.
 COPY --from=runtime-deps --chown=node:node /runtime-node_modules ./node_modules
 COPY --from=builder --chown=node:node /calcom/packages/prisma ./packages/prisma
 COPY --from=builder --chown=node:node /calcom/packages/app-store ./packages/app-store
+# App-store metadata declares one runtime helper outside its own source root.
+# Keep only that TypeScript module for local ts-node seeding, not all of lib.
+COPY --from=builder --chown=node:node /calcom/packages/lib/jsonUtils.ts ./packages/lib/jsonUtils.ts
 COPY --chown=node:node scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh scripts/qualification-web-start.sh scripts/seed-app-store.ts ./scripts/
 
 RUN chmod +x scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh scripts/qualification-web-start.sh

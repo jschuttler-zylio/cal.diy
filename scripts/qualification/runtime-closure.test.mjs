@@ -1,15 +1,21 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { execFile } from "node:child_process";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import process from "node:process";
 import test from "node:test";
+import { promisify } from "node:util";
 
 const root = resolve(import.meta.dirname, "../..");
+const execFileAsync = promisify(execFile);
 
 test("runtime image is target-native, traced, and excludes build/test closures", async () => {
-  const [dockerfile, start, nextConfig] = await Promise.all([
+  const [dockerfile, start, nextConfig, googleCalendarMetadata] = await Promise.all([
     readFile(resolve(root, "Dockerfile"), "utf8"),
     readFile(resolve(root, "scripts/qualification-web-start.sh"), "utf8"),
     readFile(resolve(root, "apps/web/next.config.ts"), "utf8"),
+    readFile(resolve(root, "packages/app-store/googlecalendar/_metadata.ts"), "utf8"),
   ]);
 
   assert.match(
@@ -40,7 +46,19 @@ test("runtime image is target-native, traced, and excludes build/test closures",
     dockerfile,
     /ln -s \.\.\/\.\.\/packages\/app-store \/runtime-node_modules\/@calcom\/app-store/
   );
+  assert.match(dockerfile, /ln -s \.\.\/\.\.\/packages\/lib \/runtime-node_modules\/@calcom\/lib/);
   assert.match(dockerfile, /ln -s \.\.\/\.\.\/packages\/prisma \/runtime-node_modules\/@calcom\/prisma/);
+  assert.match(
+    dockerfile,
+    /COPY --from=builder --chown=node:node \/calcom\/packages\/lib\/jsonUtils\.ts \.\/packages\/lib\/jsonUtils\.ts/
+  );
+  assert.match(googleCalendarMetadata, /from "@calcom\/lib\/jsonUtils"/);
+  const maintenanceCopies = [
+    ...dockerfile.matchAll(
+      /COPY --from=builder --chown=node:node \/calcom\/packages\/([^\s]+) \.\/packages\//g
+    ),
+  ].map((match) => match[1]);
+  assert.deepEqual(maintenanceCopies, ["prisma", "app-store", "lib/jsonUtils.ts"]);
   assert.doesNotMatch(dockerfile, /COPY --from=builder \/calcom\/node_modules/);
   assert.doesNotMatch(dockerfile, /COPY --from=builder \/calcom\/packages \.\/packages/);
   assert.match(dockerfile, /! find \/calcom -type d/);
@@ -61,4 +79,30 @@ test("runtime image is target-native, traced, and excludes build/test closures",
   assert.match(nextConfig, /outputFileTracingRoot: path\.join\(__dirname, "\.\.\/\.\."\)/);
   assert.match(start, /node apps\/web\/server\.js/);
   assert.doesNotMatch(start, /\byarn\b|\bturbo\b/);
+});
+
+test("the copied maintenance utility resolves through the narrowed workspace alias", async (t) => {
+  const fixture = await mkdtemp(join(tmpdir(), "calcom-maintenance-closure-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+
+  const utilityDestination = join(fixture, "packages", "lib", "jsonUtils.ts");
+  await mkdir(join(fixture, "node_modules", "@calcom"), { recursive: true });
+  await cp(resolve(root, "packages/lib/jsonUtils.ts"), utilityDestination);
+  await symlink(
+    join(fixture, "packages", "lib"),
+    join(fixture, "node_modules", "@calcom", "lib"),
+    "junction"
+  );
+
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [
+      "-r",
+      resolve(root, "node_modules/ts-node/register/transpile-only"),
+      "-e",
+      "const { validJson } = require('@calcom/lib/jsonUtils'); process.stdout.write(String(validJson('{\"ok\":true}').ok));",
+    ],
+    { cwd: fixture }
+  );
+  assert.equal(stdout, "true");
 });
