@@ -7,6 +7,7 @@ const compose = read("deploy/qualification/docker-compose.web.yml");
 const profileDocs = read("deploy/qualification/README.md");
 const start = read("scripts/qualification-web-start.sh");
 const entrypoint = read("scripts/qualification-entrypoint.sh");
+const seedBundleConfig = read("scripts/qualification/seed-bundle.config.mjs");
 const workflow = read(".github/workflows/zylio-qualification-image.yml");
 const dockerfile = read("Dockerfile");
 const nextConfig = read("apps/web/next.config.ts");
@@ -261,14 +262,26 @@ for (const required of [
   "COPY --from=builder --chown=node:node /calcom/apps/web/.next/static ./apps/web/.next/static",
   "COPY --from=runtime-deps --chown=node:node /runtime-node_modules ./node_modules",
   "COPY --from=builder --chown=node:node /calcom/packages/prisma ./packages/prisma",
-  "COPY --from=builder --chown=node:node /calcom/packages/app-store ./packages/app-store",
-  "COPY --from=builder --chown=node:node /calcom/packages/lib/jsonUtils.ts ./packages/lib/jsonUtils.ts",
+  "COPY --from=builder --chown=node:node /calcom/.qualification/seed/seed-app-store.cjs ./scripts/seed-app-store.cjs",
   "rm -rf /runtime-node_modules/@calcom /runtime-node_modules/@coss",
-  "ln -s ../../packages/app-store /runtime-node_modules/@calcom/app-store",
-  "ln -s ../../packages/lib /runtime-node_modules/@calcom/lib",
   "ln -s ../../packages/prisma /runtime-node_modules/@calcom/prisma",
 ]) {
   if (!dockerfile.includes(required)) throw new Error(`runtime COPY allowlist is missing ${required}`);
+}
+for (const required of [
+  "yarn --cwd packages/embeds/embed-core vite build --config ../../../scripts/qualification/seed-bundle.config.mjs",
+  "COPY scripts/seed-app-store.ts ./scripts/seed-app-store.ts",
+  "COPY scripts/qualification/seed-bundle.config.mjs ./scripts/qualification/seed-bundle.config.mjs",
+]) {
+  if (!dockerfile.includes(required)) throw new Error(`seed bundle build is missing ${required}`);
+}
+if (
+  !seedBundleConfig.includes("noExternal: true") ||
+  !seedBundleConfig.includes('id === "@calcom/prisma"') ||
+  !seedBundleConfig.includes('id.startsWith("@calcom/prisma/")') ||
+  !seedBundleConfig.includes('entryFileNames: "seed-app-store.cjs"')
+) {
+  throw new Error("seed bundle must resolve the static closure and externalize only Prisma");
 }
 for (const forbidden of [
   "COPY --from=builder /calcom/node_modules",
@@ -314,7 +327,7 @@ if (!runtimeLogRedactor.includes("secretFiles"))
 if (
   /\bnpx\b/.test(entrypoint) ||
   !entrypoint.includes("/calcom/node_modules/.bin/prisma") ||
-  !entrypoint.includes("/calcom/node_modules/.bin/ts-node")
+  !entrypoint.includes("/usr/local/bin/node -r /calcom/node_modules/ts-node/register/transpile-only")
 ) {
   throw new Error("runtime maintenance commands are not confined to copied local binaries");
 }

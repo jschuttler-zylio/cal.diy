@@ -61,15 +61,15 @@ monorepo for output tracing, supplies the web runtime. A target-native
 `yarn workspaces focus @calcom/web --production` supplies only the production
 external dependency closure; the final image explicitly removes and asserts the
 absence of Depot, the Trigger CLI, esbuild, Vite, and Playwright across both the
-focused closure and traced output. Prisma
-migration and app-store seed keep only their narrow local maintenance roots
-(`packages/prisma`, `packages/app-store`, local `prisma`, and local `ts-node`).
-The seed also needs the declared `@calcom/lib/jsonUtils` helper while evaluating
-app-store metadata, so it receives exactly that source module, not the `lib`
-package or any additional workspace closure. The only restored workspace module
-aliases are `@calcom/prisma`, `@calcom/app-store`, and `@calcom/lib`; each points
-at those copied maintenance roots so the local seed entrypoint can resolve its
-declared imports without restoring the full workspace tree.
+focused closure and traced output. Prisma migration keeps its narrow local
+source root plus the local `prisma` binary. App-store seeding is compiled during
+the builder stage into one deterministic CommonJS maintenance artifact using
+the workspace-pinned Vite toolchain. That bundle resolves the complete static
+app-store/lib/type metadata graph at build time and externalizes only Node
+built-ins and `@calcom/prisma`; the maintenance path therefore adds neither an
+app-store nor a lib source tree to the runner. The sole restored maintenance
+workspace alias is `@calcom/prisma`, and the seed loads that TypeScript root
+through the copied local `ts-node` register hook.
 The native smoke runs migration, app-store seed, the standalone web server, a
 public auth API request, a dynamic logo/image request, and an avatar fallback
 route against PostgreSQL before it can report `runtimeSmoke: pass`.

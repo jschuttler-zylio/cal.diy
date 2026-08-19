@@ -46,6 +46,9 @@ COPY packages ./packages
 
 RUN yarn config set httpTimeout 1200000
 RUN yarn install --immutable
+COPY scripts/seed-app-store.ts ./scripts/seed-app-store.ts
+COPY scripts/qualification/seed-bundle.config.mjs ./scripts/qualification/seed-bundle.config.mjs
+RUN yarn --cwd packages/embeds/embed-core vite build --config ../../../scripts/qualification/seed-bundle.config.mjs
 RUN yarn vitest run packages/features/tasker/internal-tasker.test.ts packages/features/tasker/task-processor.test.ts
 # Build and make embed servable from web/public/embed folder
 RUN yarn workspace @calcom/trpc run build
@@ -86,8 +89,6 @@ RUN mkdir /runtime-node_modules \
   && cp -a node_modules/. /runtime-node_modules/ \
   && rm -rf /runtime-node_modules/@calcom /runtime-node_modules/@coss \
   && mkdir -p /runtime-node_modules/@calcom \
-  && ln -s ../../packages/app-store /runtime-node_modules/@calcom/app-store \
-  && ln -s ../../packages/lib /runtime-node_modules/@calcom/lib \
   && ln -s ../../packages/prisma /runtime-node_modules/@calcom/prisma
 
 FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS runner
@@ -97,18 +98,15 @@ WORKDIR /calcom
 RUN command -v setpriv && command -v sed && command -v egrep && command -v find
 
 # The standalone output has its traced workspace runtime tree. Only the focused
-# production external closure and the two explicit maintenance source roots are
+# production external closure and the explicit Prisma maintenance source root are
 # added; no build/test tree is copied into the published image.
 COPY --from=builder --chown=node:node /calcom/apps/web/.next/standalone ./
 COPY --from=builder --chown=node:node /calcom/apps/web/public ./apps/web/public
 COPY --from=builder --chown=node:node /calcom/apps/web/.next/static ./apps/web/.next/static
 COPY --from=runtime-deps --chown=node:node /runtime-node_modules ./node_modules
 COPY --from=builder --chown=node:node /calcom/packages/prisma ./packages/prisma
-COPY --from=builder --chown=node:node /calcom/packages/app-store ./packages/app-store
-# App-store metadata declares one runtime helper outside its own source root.
-# Keep only that TypeScript module for local ts-node seeding, not all of lib.
-COPY --from=builder --chown=node:node /calcom/packages/lib/jsonUtils.ts ./packages/lib/jsonUtils.ts
-COPY --chown=node:node scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh scripts/qualification-web-start.sh scripts/seed-app-store.ts ./scripts/
+COPY --from=builder --chown=node:node /calcom/.qualification/seed/seed-app-store.cjs ./scripts/seed-app-store.cjs
+COPY --chown=node:node scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh scripts/qualification-web-start.sh ./scripts/
 
 RUN chmod +x scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh scripts/qualification-web-start.sh
 # The upstream runtime URL replacement writes only built/static web assets before

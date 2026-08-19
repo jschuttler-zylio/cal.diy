@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import test from "node:test";
 import { promisify } from "node:util";
@@ -42,15 +43,10 @@ test("runtime image is target-native, traced, and excludes build/test closures",
     dockerfile,
     /COPY --from=runtime-deps --chown=node:node \/runtime-node_modules \.\/node_modules/
   );
-  assert.match(
-    dockerfile,
-    /ln -s \.\.\/\.\.\/packages\/app-store \/runtime-node_modules\/@calcom\/app-store/
-  );
-  assert.match(dockerfile, /ln -s \.\.\/\.\.\/packages\/lib \/runtime-node_modules\/@calcom\/lib/);
   assert.match(dockerfile, /ln -s \.\.\/\.\.\/packages\/prisma \/runtime-node_modules\/@calcom\/prisma/);
   assert.match(
     dockerfile,
-    /COPY --from=builder --chown=node:node \/calcom\/packages\/lib\/jsonUtils\.ts \.\/packages\/lib\/jsonUtils\.ts/
+    /COPY --from=builder --chown=node:node \/calcom\/\.qualification\/seed\/seed-app-store\.cjs \.\/scripts\/seed-app-store\.cjs/
   );
   assert.match(googleCalendarMetadata, /from "@calcom\/lib\/jsonUtils"/);
   const maintenanceCopies = [
@@ -58,7 +54,7 @@ test("runtime image is target-native, traced, and excludes build/test closures",
       /COPY --from=builder --chown=node:node \/calcom\/packages\/([^\s]+) \.\/packages\//g
     ),
   ].map((match) => match[1]);
-  assert.deepEqual(maintenanceCopies, ["prisma", "app-store", "lib/jsonUtils.ts"]);
+  assert.deepEqual(maintenanceCopies, ["prisma"]);
   assert.doesNotMatch(dockerfile, /COPY --from=builder \/calcom\/node_modules/);
   assert.doesNotMatch(dockerfile, /COPY --from=builder \/calcom\/packages \.\/packages/);
   assert.match(dockerfile, /! find \/calcom -type d/);
@@ -81,28 +77,58 @@ test("runtime image is target-native, traced, and excludes build/test closures",
   assert.doesNotMatch(start, /\byarn\b|\bturbo\b/);
 });
 
-test("the copied maintenance utility resolves through the narrowed workspace alias", async (t) => {
+test("the seed bundle resolves the full metadata closure and externalizes only Prisma", async (t) => {
   const fixture = await mkdtemp(join(tmpdir(), "calcom-maintenance-closure-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));
 
-  const utilityDestination = join(fixture, "packages", "lib", "jsonUtils.ts");
-  await mkdir(join(fixture, "node_modules", "@calcom"), { recursive: true });
-  await cp(resolve(root, "packages/lib/jsonUtils.ts"), utilityDestination);
-  await symlink(
-    join(fixture, "packages", "lib"),
-    join(fixture, "node_modules", "@calcom", "lib"),
-    "junction"
-  );
+  const requireFromEmbed = createRequire(resolve(root, "packages/embeds/embed-core/package.json"));
+  const viteCli = resolve(dirname(requireFromEmbed.resolve("vite/package.json")), "bin/vite.js");
+  const buildBundle = (outDir) =>
+    execFileAsync(
+      process.execPath,
+      [
+        viteCli,
+        "build",
+        "--config",
+        resolve(root, "scripts/qualification/seed-bundle.config.mjs"),
+        "--outDir",
+        outDir,
+      ],
+      { cwd: root }
+    );
+  const firstBuild = join(fixture, "first");
+  const secondBuild = join(fixture, "second");
+  await buildBundle(firstBuild);
+  await buildBundle(secondBuild);
 
-  const { stdout } = await execFileAsync(
-    process.execPath,
-    [
-      "-r",
-      resolve(root, "node_modules/ts-node/register/transpile-only"),
-      "-e",
-      "const { validJson } = require('@calcom/lib/jsonUtils'); process.stdout.write(String(validJson('{\"ok\":true}').ok));",
-    ],
-    { cwd: fixture }
+  const bundlePath = join(firstBuild, "seed-app-store.cjs");
+  const bundle = await readFile(bundlePath, "utf8");
+  assert.equal(bundle, await readFile(join(secondBuild, "seed-app-store.cjs"), "utf8"));
+  assert.doesNotMatch(bundle, /@calcom\/(?:app-store|lib|types)/);
+  assert.match(bundle, /require\(["']@calcom\/prisma["']\)/);
+  assert.match(bundle, /require\(["']@calcom\/prisma\/enums["']\)/);
+  const externalRequires = [
+    ...new Set([...bundle.matchAll(/\brequire\(["']([^"']+)["']\)/g)].map((match) => match[1])),
+  ].sort();
+  assert.deepEqual(externalRequires, [
+    "@calcom/prisma",
+    "@calcom/prisma/enums",
+    "crypto",
+    "fs",
+    "node:path",
+    "node:process",
+    "os",
+    "path",
+  ]);
+
+  const prismaModule = join(firstBuild, "node_modules", "@calcom", "prisma");
+  await mkdir(prismaModule, { recursive: true });
+  await writeFile(
+    join(prismaModule, "index.js"),
+    "exports.prisma = { app: {}, credential: {}, $disconnect: async () => {} };\n"
   );
-  assert.equal(stdout, "true");
+  await writeFile(join(prismaModule, "enums.js"), "exports.AppCategories = {};\n");
+  await execFileAsync(process.execPath, ["-e", "require(process.argv[1])", bundlePath], {
+    cwd: firstBuild,
+  });
 });

@@ -44,7 +44,7 @@ case "${1:-web}" in
     exec setpriv --reuid=node --regid=node --init-groups /calcom/node_modules/.bin/prisma migrate deploy --schema /calcom/packages/prisma/schema.prisma
     ;;
   seed-app-store)
-    exec setpriv --reuid=node --regid=node --init-groups /calcom/node_modules/.bin/ts-node --transpile-only /calcom/scripts/seed-app-store.ts
+    exec setpriv --reuid=node --regid=node --init-groups /usr/local/bin/node -r /calcom/node_modules/ts-node/register/transpile-only /calcom/scripts/seed-app-store.cjs
     ;;
   *)
     echo "Unsupported qualification mode: ${1:-}" >&2
