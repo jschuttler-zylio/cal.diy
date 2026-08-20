@@ -140,6 +140,9 @@ RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack 
 COPY --from=builder --chown=node:node /calcom/apps/web/.next/standalone ./
 COPY --from=builder --chown=node:node /calcom/apps/web/public ./apps/web/public
 COPY --from=builder --chown=node:node /calcom/apps/web/.next/static ./apps/web/.next/static
+# Next 16.3.1 resolves its exact @swc/helpers dependency from this nested path,
+# but output tracing omits the payload. Copy only that immutable dependency.
+COPY --from=builder --chown=node:node /calcom/node_modules/next/node_modules/@swc/helpers ./node_modules/next/node_modules/@swc/helpers
 COPY --from=runtime-deps --chown=node:node /calcom/node_modules ./maintenance/node_modules
 COPY --from=builder --chown=node:node /calcom/packages/prisma ./maintenance/packages/prisma
 COPY --from=builder --chown=node:node /calcom/.qualification/seed/seed-app-store.cjs ./scripts/seed-app-store.cjs
@@ -152,6 +155,7 @@ RUN chmod +x scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh 
 # node read/execute access. No runtime path is world-writable.
 RUN test -f /calcom/maintenance/node_modules/@prisma/adapter-pg/node_modules/@prisma/driver-adapter-utils/dist/index.js \
   && test -f /calcom/node_modules/next/node_modules/@swc/helpers/esm/_interop_require_default.js \
+  && node -e "if (require('/calcom/node_modules/next/node_modules/@swc/helpers/package.json').version !== '0.5.23') process.exit(1)" \
   && find /calcom -depth -type d \( \
       -path '*/@depot' -o -path '*/@trigger.dev' -o -path '*/@esbuild' -o \
       -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \

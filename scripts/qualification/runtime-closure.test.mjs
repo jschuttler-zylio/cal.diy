@@ -11,6 +11,21 @@ import { promisify } from "node:util";
 const root = resolve(import.meta.dirname, "../..");
 const execFileAsync = promisify(execFile);
 
+const assertNextRuntimeHelper = (dockerfile) => {
+  assert.match(
+    dockerfile,
+    /COPY --from=builder --chown=node:node \/calcom\/node_modules\/next\/node_modules\/@swc\/helpers \.\/node_modules\/next\/node_modules\/@swc\/helpers/
+  );
+  assert.match(
+    dockerfile,
+    /test -f \/calcom\/node_modules\/next\/node_modules\/@swc\/helpers\/esm\/_interop_require_default\.js/
+  );
+  assert.match(
+    dockerfile,
+    /require\('\/calcom\/node_modules\/next\/node_modules\/@swc\/helpers\/package\.json'\)\.version !== '0\.5\.23'/
+  );
+};
+
 test("runtime image is target-native, traced, and excludes build/test closures", async () => {
   const [dockerfile, start, nextConfig, googleCalendarMetadata] = await Promise.all([
     readFile(resolve(root, "Dockerfile"), "utf8"),
@@ -59,6 +74,7 @@ test("runtime image is target-native, traced, and excludes build/test closures",
     dockerfile,
     /COPY --from=runtime-deps --chown=node:node \/calcom\/node_modules \.\/maintenance\/node_modules/
   );
+  assertNextRuntimeHelper(dockerfile);
   assert.match(dockerfile, /ln -s \.\.\/\.\.\/packages\/prisma node_modules\/@calcom\/prisma/);
   assert.doesNotMatch(dockerfile, /RUN rm -rf \/calcom\/node_modules\/@prisma/);
   assert.match(
@@ -78,14 +94,6 @@ test("runtime image is target-native, traced, and excludes build/test closures",
   assert.match(
     dockerfile,
     /COPY --from=builder --chown=node:node \/calcom\/\.qualification\/seed\/seed-app-store\.cjs \.\/scripts\/seed-app-store\.cjs/
-  );
-  assert.match(
-    dockerfile,
-    /COPY --from=runtime-deps --chown=node:node \/calcom\/node_modules \.\/maintenance\/node_modules/
-  );
-  assert.match(
-    dockerfile,
-    /test -f \/calcom\/node_modules\/next\/node_modules\/@swc\/helpers\/esm\/_interop_require_default\.js/
   );
   assert.match(googleCalendarMetadata, /from "@calcom\/lib\/jsonUtils"/);
   const maintenanceCopies = [
