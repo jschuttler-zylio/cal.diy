@@ -154,8 +154,15 @@ RUN chmod +x scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh 
 # ownership, so make precisely those replacement targets root-owned and retain
 # node read/execute access. No runtime path is world-writable.
 RUN test -f /calcom/maintenance/node_modules/@prisma/adapter-pg/node_modules/@prisma/driver-adapter-utils/dist/index.js \
+  && test -f /calcom/maintenance/node_modules/@prisma/config/package.json \
+  && test -f /calcom/maintenance/node_modules/deepmerge-ts/package.json \
+  && test -f /calcom/maintenance/node_modules/effect/package.json \
   && test -f /calcom/node_modules/next/node_modules/@swc/helpers/esm/_interop_require_default.js \
   && node -e "if (require('/calcom/node_modules/next/node_modules/@swc/helpers/package.json').version !== '0.5.23') process.exit(1)" \
+  && rm -rf /calcom/node_modules/@prisma/config /calcom/node_modules/deepmerge-ts /calcom/node_modules/effect \
+  && test ! -e /calcom/node_modules/@prisma/config \
+  && test ! -e /calcom/node_modules/deepmerge-ts \
+  && test ! -e /calcom/node_modules/effect \
   && find /calcom -depth -type d \( \
       -path '*/@depot' -o -path '*/@trigger.dev' -o -path '*/@esbuild' -o \
       -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \

@@ -21,6 +21,7 @@ const runtimeLogRedactor = read("scripts/qualification/redact-runtime-log.mjs");
 const repository = read("packages/features/tasker/repository.ts");
 const processor = read("packages/features/tasker/task-processor.ts");
 const secretAllowlist = JSON.parse(read("deploy/qualification/trivy-secret-allowlist.json"));
+const vulnerabilityAllowlist = JSON.parse(read("deploy/qualification/trivy-vulnerability-allowlist.json"));
 const requiredFiles = [
   "DATABASE_URL",
   "DATABASE_DIRECT_URL",
@@ -184,7 +185,7 @@ if (
 }
 for (const [selector, version] of Object.entries({
   "form-data": "4.0.6",
-  axios: "1.16.0",
+  axios: "1.19.0",
   protobufjs: "7.6.1",
   "shell-quote": "1.9.0",
   hono: "4.12.25",
@@ -195,6 +196,7 @@ for (const [selector, version] of Object.entries({
   "websocket-driver": "0.7.5",
   "ws@^8.18.0": "8.21.0",
   "nanoid@^3.3.11": "3.3.18",
+  postcss: "8.5.26",
   "brace-expansion@^2.0.2": "2.1.4",
   "@xmldom/xmldom@^0.8.10": "0.8.13",
 })) {
@@ -208,6 +210,13 @@ if (workflow.includes("aquasecurity/trivy-action@") || workflow.includes("/var/r
 }
 if (!workflow.includes("--allowlist deploy/qualification/trivy-secret-allowlist.json --root .")) {
   throw new Error("Trivy secret policy does not use the reviewed hash-bound allowlist");
+}
+if (
+  !workflow.includes(
+    "vulnerability qualification-artifacts/scans/vulnerability.json --allowlist deploy/qualification/trivy-vulnerability-allowlist.json --sbom qualification-artifacts/sbom/sbom.cdx.json"
+  )
+) {
+  throw new Error("Trivy vulnerability policy does not use the reviewed SBOM-bound allowlist");
 }
 if ((workflow.match(/--timeout 20m/g) ?? []).length !== 2) {
   throw new Error("published-image Trivy scan and SBOM export must each use the bounded timeout");
@@ -240,6 +249,33 @@ for (const entry of secretAllowlist.entries) {
     !entry.reason?.trim()
   ) {
     throw new Error("Trivy secret allowlist entry is not path, hash, rule, and rationale bound");
+  }
+}
+if (
+  vulnerabilityAllowlist.schemaVersion !== "1.0.0" ||
+  vulnerabilityAllowlist.lastReviewed !== "2026-08-20" ||
+  vulnerabilityAllowlist.expiresOn !== "2026-11-18" ||
+  vulnerabilityAllowlist.cisaKevCatalogVersion !== "2026.08.19" ||
+  vulnerabilityAllowlist.entries?.length !== 19
+) {
+  throw new Error("Trivy vulnerability allowlist does not match the reviewed qualification policy");
+}
+for (const entry of vulnerabilityAllowlist.entries) {
+  if (
+    !entry.vulnerabilityId ||
+    !entry.packageName ||
+    !entry.installedVersion ||
+    !["HIGH", "CRITICAL"].includes(entry.severity) ||
+    !entry.status ||
+    !["debian", "node-pkg"].includes(entry.packageType) ||
+    entry.platforms?.join(",") !== "linux/amd64,linux/arm64" ||
+    entry.occurrencesPerPlatform !== 1 ||
+    !Array.isArray(entry.paths) ||
+    !entry.reason?.trim()
+  ) {
+    throw new Error(
+      "Trivy vulnerability exception is not identity, platform, count, path, and rationale bound"
+    );
   }
 }
 const nodeStages = dockerfile
@@ -317,6 +353,13 @@ for (const required of [
   "ln -s ../../packages/prisma node_modules/@calcom/prisma",
   "test -f /calcom/node_modules/next/node_modules/@swc/helpers/esm/_interop_require_default.js",
   "require('/calcom/node_modules/next/node_modules/@swc/helpers/package.json').version !== '0.5.23'",
+  "test -f /calcom/maintenance/node_modules/@prisma/config/package.json",
+  "test -f /calcom/maintenance/node_modules/deepmerge-ts/package.json",
+  "test -f /calcom/maintenance/node_modules/effect/package.json",
+  "rm -rf /calcom/node_modules/@prisma/config /calcom/node_modules/deepmerge-ts /calcom/node_modules/effect",
+  "test ! -e /calcom/node_modules/@prisma/config",
+  "test ! -e /calcom/node_modules/deepmerge-ts",
+  "test ! -e /calcom/node_modules/effect",
   "command -v unzip",
   "unzip -q .yarn/cache/@prisma-driver-adapter-utils-npm-6.16.1-37fd39f74c-0866fce22f.zip",
 ]) {

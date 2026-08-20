@@ -288,10 +288,10 @@ jobs:
             --secret-output qualification-artifacts/scans/secret.json
           cp /tmp/runtime-smoke-evidence.json qualification-artifacts/runtime-smoke-evidence.json
           node scripts/qualification/generate-manifests.mjs --output qualification-artifacts --built
-      - name: Enforce zero secret, HIGH, or CRITICAL findings
+      - name: Enforce secret and reviewed vulnerability policy
         run: |
           node scripts/qualification/enforce-trivy-report.mjs secret qualification-artifacts/scans/secret.json --allowlist deploy/qualification/trivy-secret-allowlist.json --root .
-          node scripts/qualification/enforce-trivy-report.mjs vulnerability qualification-artifacts/scans/vulnerability.json
+          node scripts/qualification/enforce-trivy-report.mjs vulnerability qualification-artifacts/scans/vulnerability.json --allowlist deploy/qualification/trivy-vulnerability-allowlist.json --sbom qualification-artifacts/sbom/sbom.cdx.json
       - name: Assemble hashed qualification evidence manifest
         run: |
           cd qualification-artifacts

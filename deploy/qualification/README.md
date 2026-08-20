@@ -34,15 +34,17 @@ Yarn, Turbo, or writable build cache. It does not make `/calcom` or its built
 assets writable to the web process.
 The profile does not add `DAC_OVERRIDE` or make any runtime path world-writable.
 
-The published runner uses the verified multi-architecture
-`node:20-bookworm-slim` manifest digest
-`sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0`
-(the inspected AMD64 descriptor reports Node 20.20.2). The target-native builder
-uses a separately verified immutable full-Bookworm Node 20.20.2 index digest
-`sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5`:
-it supplies the upstream native-install toolchain, while that larger base never
-crosses into the published image. No stage is pinned to `BUILDPLATFORM`: each
-native runner installs and builds its own target-architecture dependencies.
+The builder and published runner use the verified multi-architecture
+`node:24.19.0-trixie-slim` manifest digest
+`sha256:0711b541c1c33a8a530ac4f0d391baa9a15b3d804695b1b24a47daa5fb60e74d`.
+This is the current Node LTS line on the current Debian stable generation. The
+builder adds only `g++`, `make`, `python3`, and `unzip` for upstream native
+install hooks; none crosses into the runner. The runner applies Debian stable
+updates, then removes package-manager metadata and the bundled npm/Corepack
+trees because no runtime entrypoint uses them. No stage is pinned to
+`BUILDPLATFORM`: each native runner installs and builds its own
+target-architecture dependencies. The build probes deasync, Sharp, and the
+Sentry CPU profiler on the native target before compiling the application.
 `yarn install --immutable` rejects any lockfile change; the builder receives the
 complete declared workspace graph so a partial Docker context cannot silently
 rewrite the lock. Each native build runs the focused Tasker retention and
@@ -58,23 +60,26 @@ Yarn install.
 
 The runner is not a copy of the builder. Next standalone output, rooted at the
 monorepo for output tracing, supplies the web runtime. A target-native
-`yarn workspaces focus @calcom/web --production` supplies only the production
-external dependency closure; the final image explicitly removes and asserts the
-absence of Depot, the Trigger CLI, esbuild, Vite, and Playwright across both the
-focused closure and traced output. Prisma migration keeps its narrow local
-source root plus the local `prisma` binary. App-store seeding is compiled during
-the builder stage into one deterministic CommonJS maintenance artifact using
-the workspace-pinned Vite toolchain. That bundle resolves the complete static
+`yarn workspaces focus @calcom/prisma --production` supplies only the migration
+and seed dependency closure under `/calcom/maintenance`; it never overlays the
+standalone web tree. The final image explicitly removes and asserts the absence
+of Depot, the Trigger CLI, esbuild, Vite, and Playwright across both roots. It
+also removes the duplicate web-traced Prisma CLI configuration packages after
+proving that the isolated maintenance copies remain. Next 16's exact nested
+SWC helper is restored from the immutable builder graph because output tracing
+does not emit that payload, and the build asserts its reviewed version and
+entry module before publication. Prisma migration keeps its narrow local source
+root plus the local `prisma` binary. App-store seeding is compiled during the
+builder stage into one deterministic CommonJS maintenance artifact using the
+workspace-pinned Vite toolchain. That bundle resolves the complete static
 app-store/lib/type metadata graph at build time and externalizes only Node
 built-ins and `@calcom/prisma`; the maintenance path therefore adds neither an
 app-store nor a lib source tree to the runner. The sole restored maintenance
 workspace alias is `@calcom/prisma`, and the seed loads that TypeScript root
-through the copied local `ts-node` register hook.
-The focused install is handed directly between Docker stages so Yarn's nested
-package content is not reconstructed through an intermediate copy. Before the
-focused closure is overlaid, the runner removes any partially traced `@prisma`
-namespace; both stages then assert the exact nested adapter utility used by the
-seed's Prisma client.
+through the copied local `ts-node` register hook. The focused install is handed
+directly between Docker stages so Yarn's nested package content is not
+reconstructed through an intermediate copy; both stages assert the exact
+nested adapter utility used by the seed's Prisma client.
 Yarn's production focus currently retains the exact 6.16.1 nested adapter
 package metadata without its `dist` payload. The build restores only that
 package from the immutable install's checksum-verified cache archive, named
@@ -107,11 +112,19 @@ only atomically publishes a non-empty result; exhaustion remains a terminal
 workflow failure before raw evidence or policy enforcement can proceed.
 The read-only source secret job must pass before either native image build may
 publish, and each job receives only its required GitHub token permissions.
-Malformed output, any HIGH/CRITICAL vulnerability, or any unexpected secret
-finding blocks the image manifest, while the raw reports remain downloadable
-for review. The only secret exceptions are inherited upstream documentation/test
-fixtures matched by exact path, rule count, and frozen file hash in
-`trivy-secret-allowlist.json`; a changed or additional finding fails closed.
+Malformed output, any unexpected HIGH/CRITICAL vulnerability, or any unexpected
+secret finding blocks the image manifest, while the raw reports remain
+downloadable for review. Fixable runtime findings are upgraded or removed; they
+are not excepted. A remaining vulnerability can pass only through
+`trivy-vulnerability-allowlist.json`, which binds the exact vulnerability,
+package and installed/fixed versions, severity, upstream status, both native
+platforms, occurrence count, CycloneDX SBOM path, and reviewed reachability
+rationale. The policy records the CISA KEV catalog version reviewed and expires
+after 90 days; a changed package, path, finding, platform, count, or expired
+review fails closed. The only secret exceptions are inherited upstream
+documentation/test fixtures matched by exact path, rule count, and frozen file
+hash in `trivy-secret-allowlist.json`; a changed or additional finding also
+fails closed.
 The builder runs those tests before compile, but strips `apps/web/playwright`
 from the runtime handoff stage: E2E sources are not runtime dependencies and
 must not turn those reviewed source-only fixture exceptions into embedded image
