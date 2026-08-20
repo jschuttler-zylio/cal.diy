@@ -57,10 +57,10 @@ test("runtime image is target-native, traced, and excludes build/test closures",
   assert.match(dockerfile, /COPY --from=builder --chown=node:node \/calcom\/apps\/web\/.next\/standalone \./);
   assert.match(
     dockerfile,
-    /COPY --from=runtime-deps --chown=node:node \/calcom\/node_modules \.\/node_modules/
+    /COPY --from=runtime-deps --chown=node:node \/calcom\/node_modules \.\/maintenance\/node_modules/
   );
   assert.match(dockerfile, /ln -s \.\.\/\.\.\/packages\/prisma node_modules\/@calcom\/prisma/);
-  assert.match(dockerfile, /RUN rm -rf \/calcom\/node_modules\/@prisma/);
+  assert.doesNotMatch(dockerfile, /RUN rm -rf \/calcom\/node_modules\/@prisma/);
   assert.match(
     dockerfile,
     /unzip -q \.yarn\/cache\/@prisma-driver-adapter-utils-npm-6\.16\.1-37fd39f74c-0866fce22f\.zip/
@@ -79,10 +79,18 @@ test("runtime image is target-native, traced, and excludes build/test closures",
     dockerfile,
     /COPY --from=builder --chown=node:node \/calcom\/\.qualification\/seed\/seed-app-store\.cjs \.\/scripts\/seed-app-store\.cjs/
   );
+  assert.match(
+    dockerfile,
+    /COPY --from=runtime-deps --chown=node:node \/calcom\/node_modules \.\/maintenance\/node_modules/
+  );
+  assert.match(
+    dockerfile,
+    /test -f \/calcom\/node_modules\/next\/node_modules\/@swc\/helpers\/esm\/_interop_require_default\.js/
+  );
   assert.match(googleCalendarMetadata, /from "@calcom\/lib\/jsonUtils"/);
   const maintenanceCopies = [
     ...dockerfile.matchAll(
-      /COPY --from=builder --chown=node:node \/calcom\/packages\/([^\s]+) \.\/packages\//g
+      /COPY --from=builder --chown=node:node \/calcom\/packages\/([^\s]+) \.\/maintenance\/packages\//g
     ),
   ].map((match) => match[1]);
   assert.deepEqual(maintenanceCopies, ["prisma"]);

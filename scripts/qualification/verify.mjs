@@ -309,12 +309,12 @@ for (const required of [
   "COPY --from=builder --chown=node:node /calcom/apps/web/.next/standalone ./",
   "COPY --from=builder --chown=node:node /calcom/apps/web/public ./apps/web/public",
   "COPY --from=builder --chown=node:node /calcom/apps/web/.next/static ./apps/web/.next/static",
-  "COPY --from=runtime-deps --chown=node:node /calcom/node_modules ./node_modules",
-  "COPY --from=builder --chown=node:node /calcom/packages/prisma ./packages/prisma",
+  "COPY --from=runtime-deps --chown=node:node /calcom/node_modules ./maintenance/node_modules",
+  "COPY --from=builder --chown=node:node /calcom/packages/prisma ./maintenance/packages/prisma",
   "COPY --from=builder --chown=node:node /calcom/.qualification/seed/seed-app-store.cjs ./scripts/seed-app-store.cjs",
   "rm -rf node_modules/@calcom node_modules/@coss",
   "ln -s ../../packages/prisma node_modules/@calcom/prisma",
-  "RUN rm -rf /calcom/node_modules/@prisma",
+  "test -f /calcom/node_modules/next/node_modules/@swc/helpers/esm/_interop_require_default.js",
   "command -v unzip",
   "unzip -q .yarn/cache/@prisma-driver-adapter-utils-npm-6.16.1-37fd39f74c-0866fce22f.zip",
 ]) {
@@ -396,10 +396,14 @@ if (
 }
 if (
   /\bnpx\b/.test(entrypoint) ||
-  !entrypoint.includes("/calcom/node_modules/.bin/prisma") ||
-  !entrypoint.includes("/usr/local/bin/node -r /calcom/node_modules/ts-node/register/transpile-only")
+  !entrypoint.includes("/calcom/maintenance/node_modules/.bin/prisma") ||
+  !entrypoint.includes("--schema /calcom/maintenance/packages/prisma/schema.prisma") ||
+  !entrypoint.includes("NODE_PATH=/calcom/maintenance/node_modules") ||
+  !entrypoint.includes(
+    "/usr/local/bin/node -r /calcom/maintenance/node_modules/ts-node/register/transpile-only"
+  )
 ) {
-  throw new Error("runtime maintenance commands are not confined to copied local binaries");
+  throw new Error("runtime maintenance commands are not confined to the isolated copied closure");
 }
 for (const required of [
   "sudo chown -R root:root",

@@ -134,17 +134,14 @@ RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack 
   && command -v egrep \
   && command -v find
 
-# The standalone output has its traced workspace runtime tree. Only the focused
-# production external closure and the explicit Prisma maintenance source root are
-# added; no build/test tree is copied into the published image.
+# The standalone output has its traced workspace runtime tree. Keep the focused
+# Prisma/seed maintenance closure under a separate root so Docker COPY merging
+# cannot replace or partially overwrite Next's traced nested dependencies.
 COPY --from=builder --chown=node:node /calcom/apps/web/.next/standalone ./
 COPY --from=builder --chown=node:node /calcom/apps/web/public ./apps/web/public
 COPY --from=builder --chown=node:node /calcom/apps/web/.next/static ./apps/web/.next/static
-# Output tracing can leave partial third-party package directories. Replace the
-# Prisma namespace atomically with the complete focused production closure.
-RUN rm -rf /calcom/node_modules/@prisma
-COPY --from=runtime-deps --chown=node:node /calcom/node_modules ./node_modules
-COPY --from=builder --chown=node:node /calcom/packages/prisma ./packages/prisma
+COPY --from=runtime-deps --chown=node:node /calcom/node_modules ./maintenance/node_modules
+COPY --from=builder --chown=node:node /calcom/packages/prisma ./maintenance/packages/prisma
 COPY --from=builder --chown=node:node /calcom/.qualification/seed/seed-app-store.cjs ./scripts/seed-app-store.cjs
 COPY --chown=node:node scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh scripts/qualification-web-start.sh ./scripts/
 
@@ -153,7 +150,8 @@ RUN chmod +x scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh 
 # dropping to node. With all Linux capabilities removed, UID 0 cannot bypass
 # ownership, so make precisely those replacement targets root-owned and retain
 # node read/execute access. No runtime path is world-writable.
-RUN test -f /calcom/node_modules/@prisma/adapter-pg/node_modules/@prisma/driver-adapter-utils/dist/index.js \
+RUN test -f /calcom/maintenance/node_modules/@prisma/adapter-pg/node_modules/@prisma/driver-adapter-utils/dist/index.js \
+  && test -f /calcom/node_modules/next/node_modules/@swc/helpers/esm/_interop_require_default.js \
   && find /calcom -depth -type d \( \
       -path '*/@depot' -o -path '*/@trigger.dev' -o -path '*/@esbuild' -o \
       -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \
