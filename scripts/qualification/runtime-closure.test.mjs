@@ -21,12 +21,27 @@ test("runtime image is target-native, traced, and excludes build/test closures",
 
   assert.match(
     dockerfile,
-    /node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0/
+    /FROM node:24\.19\.0-trixie-slim@sha256:0711b541c1c33a8a530ac4f0d391baa9a15b3d804695b1b24a47daa5fb60e74d AS runner/
   );
   assert.match(
     dockerfile,
-    /node:20\.20\.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5/
+    /FROM node:24\.19\.0-trixie-slim@sha256:0711b541c1c33a8a530ac4f0d391baa9a15b3d804695b1b24a47daa5fb60e74d AS builder/
   );
+  assert.match(dockerfile, /apt-get install -y --no-install-recommends g\+\+ make python3 unzip/);
+  assert.match(dockerfile, /apt-get upgrade -y --no-install-recommends/);
+  assert.doesNotMatch(dockerfile, /node:20|bookworm/);
+  assert.match(dockerfile, /require\(['"]deasync['"]\)\.runLoopOnce\(\)/);
+  assert.match(dockerfile, /require\(['"]sharp['"]\)/);
+  assert.match(dockerfile, /require\(['"]@sentry-internal\/node-cpu-profiler['"]\)/);
+  assert.match(
+    dockerfile,
+    /rm -rf \/usr\/local\/lib\/node_modules\/npm \/usr\/local\/lib\/node_modules\/corepack \/opt\/yarn-v\*/
+  );
+  for (const packageManager of ["npm", "npx", "yarn", "corepack"]) {
+    assert.match(dockerfile, new RegExp(`! command -v ${packageManager}`));
+  }
+  assert.match(dockerfile, /test "\$\(node --version\)" = "v24\.19\.0"/);
+  assert.match(dockerfile, /test "\$VERSION_ID" = "13"/);
   const finalRuntimePrune = dockerfile.indexOf("find /calcom -depth -type d");
   const standaloneCopy = dockerfile.indexOf(
     "COPY --from=builder --chown=node:node /calcom/apps/web/.next/standalone ./"
@@ -34,7 +49,8 @@ test("runtime image is target-native, traced, and excludes build/test closures",
   assert.ok(finalRuntimePrune > standaloneCopy, "traced standalone output is pruned after it is copied");
   assert.match(dockerfile, /find \/calcom -depth -type d[\s\S]*?-exec rm -rf \{\} \+/);
   assert.doesNotMatch(dockerfile, /--platform=\$BUILDPLATFORM/);
-  assert.match(dockerfile, /RUN yarn workspaces focus @calcom\/web --production/);
+  assert.match(dockerfile, /RUN yarn workspaces focus @calcom\/prisma --production/);
+  assert.doesNotMatch(dockerfile, /RUN yarn workspaces focus @calcom\/web --production/);
   assert.doesNotMatch(dockerfile, /workspace @calcom\/embed-core run build/);
   assert.match(dockerfile, /workspace @calcom\/embed-core run tailwind/);
   assert.match(dockerfile, /yarn --cwd packages\/embeds\/embed-core vite build/);
@@ -76,7 +92,7 @@ test("runtime image is target-native, traced, and excludes build/test closures",
   assert.match(dockerfile, /! find \/calcom -type d/);
   for (const closure of [
     "@depot",
-    "trigger.dev",
+    "@trigger.dev",
     "@esbuild",
     "esbuild",
     "vite",

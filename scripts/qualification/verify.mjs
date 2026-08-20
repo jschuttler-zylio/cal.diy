@@ -12,7 +12,10 @@ const workflow = read(".github/workflows/zylio-qualification-image.yml");
 const dockerfile = read("Dockerfile");
 const nextConfig = read("apps/web/next.config.ts");
 const instrumentation = read("apps/web/instrumentation.ts");
+const rootPackage = JSON.parse(read("package.json"));
 const webPackage = JSON.parse(read("apps/web/package.json"));
+const featuresPackage = JSON.parse(read("packages/features/package.json"));
+const libPackage = JSON.parse(read("packages/lib/package.json"));
 const prismaPackage = JSON.parse(read("packages/prisma/package.json"));
 const runtimeLogRedactor = read("scripts/qualification/redact-runtime-log.mjs");
 const repository = read("packages/features/tasker/repository.ts");
@@ -167,14 +170,37 @@ if (
   throw new Error("Next standalone output is not rooted at the monorepo for runtime tracing");
 }
 if (
-  webPackage.dependencies.next !== "16.2.11" ||
+  webPackage.dependencies.next !== "16.3.1" ||
+  webPackage.dependencies["@next/bundle-analyzer"] !== "16.3.1" ||
   webPackage.dependencies["next-auth"] !== "4.24.15" ||
   webPackage.dependencies.nodemailer !== "9.0.1" ||
-  webPackage.dependencies.sharp !== "0.35.0" ||
+  webPackage.dependencies.sharp !== "0.35.3" ||
+  libPackage.dependencies.sharp !== "0.35.3" ||
+  featuresPackage.dependencies["@trigger.dev/sdk"] !== "4.5.12" ||
   prismaPackage.dependencies["ts-node"] !== "10.9.2" ||
   prismaPackage.devDependencies["ts-node"]
 ) {
   throw new Error("scan-remediated runtime dependencies or maintenance closure are not pinned as reviewed");
+}
+for (const [selector, version] of Object.entries({
+  "form-data": "4.0.6",
+  axios: "1.16.0",
+  protobufjs: "7.6.1",
+  "shell-quote": "1.9.0",
+  hono: "4.12.25",
+  "js-yaml": "4.3.1",
+  tar: "7.5.19",
+  "socket.io-parser": "4.2.7",
+  "linkify-it": "5.0.2",
+  "websocket-driver": "0.7.5",
+  "ws@^8.18.0": "8.21.0",
+  "nanoid@^3.3.11": "3.3.18",
+  "brace-expansion@^2.0.2": "2.1.4",
+  "@xmldom/xmldom@^0.8.10": "0.8.13",
+})) {
+  if (rootPackage.resolutions[selector] !== version) {
+    throw new Error(`scan-remediated resolution is not pinned: ${selector}@${version}`);
+  }
 }
 if (workflow.includes("npx --yes ajv-cli")) throw new Error("CI downloads an unreviewed schema validator");
 if (workflow.includes("aquasecurity/trivy-action@") || workflow.includes("/var/run/docker.sock")) {
@@ -219,17 +245,15 @@ for (const entry of secretAllowlist.entries) {
 const nodeStages = dockerfile
   .split(/\r?\n/)
   .filter((line) => line.startsWith("FROM ") && line.includes("node:"));
+const nodeTrixieSlim =
+  "node:24.19.0-trixie-slim@sha256:0711b541c1c33a8a530ac4f0d391baa9a15b3d804695b1b24a47daa5fb60e74d";
 if (
   nodeStages.length !== 2 ||
-  !nodeStages[0].includes(
-    "node:20.20.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5"
-  ) ||
-  !nodeStages[1].includes(
-    "node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0"
-  )
+  !nodeStages[0].includes(`${nodeTrixieSlim} AS builder`) ||
+  !nodeStages[1].includes(`${nodeTrixieSlim} AS runner`)
 ) {
   throw new Error(
-    "Docker builder and slim runner must use their verified immutable multi-architecture digests"
+    "Docker builder and runner must use the verified Node 24 LTS / Debian 13 slim multi-architecture digest"
   );
 }
 if (/--platform=\$BUILDPLATFORM/.test(dockerfile))
@@ -257,16 +281,31 @@ if (!dockerfile.includes("COPY apps ./apps") || !dockerfile.includes("COPY examp
 if (!read(".dockerignore").includes("docs/**") || read(".dockerignore").split(/\r?\n/).includes("docs")) {
   throw new Error("Docker context excludes a declared documentation workspace");
 }
-for (const forbidden of ["npx", "apt-get", "wget", "gosu", "netcat-openbsd"]) {
+for (const forbidden of ["wget", "gosu", "netcat-openbsd"]) {
   if (dockerfile.includes(forbidden))
     throw new Error(`Dockerfile contains forbidden mutable/runtime package mechanism: ${forbidden}`);
 }
-if (!dockerfile.includes("RUN command -v setpriv"))
+if (
+  !dockerfile.includes("apt-get install -y --no-install-recommends g++ make python3 unzip") ||
+  !dockerfile.includes("apt-get upgrade -y --no-install-recommends") ||
+  (dockerfile.match(/apt-get /g) ?? []).length !== 4
+) {
+  throw new Error("Docker apt use is not confined to the minimal builder toolchain and runner updates");
+}
+if (/(?:^RUN|&&)\s+npx(?:\s|$)/m.test(dockerfile))
+  throw new Error("Docker build invokes npx instead of a lockfile-installed tool");
+if (!dockerfile.includes("command -v setpriv"))
   throw new Error("pinned base does not prove its privilege-drop primitive");
 for (const required of [
-  "RUN yarn workspaces focus @calcom/web --production",
-  "FROM node:20.20.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS builder",
-  "FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS runner",
+  "RUN yarn workspaces focus @calcom/prisma --production",
+  `FROM ${nodeTrixieSlim} AS builder`,
+  `FROM ${nodeTrixieSlim} AS runner`,
+  "require('deasync').runLoopOnce()",
+  "require('sharp')",
+  "require('@sentry-internal/node-cpu-profiler')",
+  "rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-v*",
+  'test "$(node --version)" = "v24.19.0"',
+  'test "$VERSION_ID" = "13"',
   "COPY --from=builder --chown=node:node /calcom/apps/web/.next/standalone ./",
   "COPY --from=builder --chown=node:node /calcom/apps/web/public ./apps/web/public",
   "COPY --from=builder --chown=node:node /calcom/apps/web/.next/static ./apps/web/.next/static",
@@ -319,7 +358,7 @@ for (const forbidden of [
 }
 for (const forbiddenClosure of [
   "@depot",
-  "trigger.dev",
+  "@trigger.dev",
   "@esbuild",
   "esbuild",
   "vite",

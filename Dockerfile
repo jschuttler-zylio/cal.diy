@@ -1,8 +1,13 @@
-# The full, target-native builder carries the toolchain required by upstream
-# native install hooks. The published runner below remains the slim digest.
-FROM node:20.20.2-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS builder
+# The target-native slim builder installs only the toolchain required by
+# upstream native install hooks. None of these packages reach the published
+# runner, which uses the same supported Node LTS and Debian stable generation.
+FROM node:24.19.0-trixie-slim@sha256:0711b541c1c33a8a530ac4f0d391baa9a15b3d804695b1b24a47daa5fb60e74d AS builder
 
 WORKDIR /calcom
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends g++ make python3 unzip \
+  && rm -rf /var/lib/apt/lists/*
 
 ## If we want to read any ENV variable from .env file, we need to first accept and pass it as an argument to the Dockerfile
 ARG NEXT_PUBLIC_LICENSE_CONSENT
@@ -46,6 +51,9 @@ COPY packages ./packages
 
 RUN yarn config set httpTimeout 1200000
 RUN yarn install --immutable
+RUN node -e "require('deasync').runLoopOnce()" \
+  && node -e "require('sharp')({ create: { width: 1, height: 1, channels: 4, background: '#000' } }).png().toBuffer()" \
+  && node -e "require('@sentry-internal/node-cpu-profiler')"
 COPY scripts/seed-app-store.ts ./scripts/seed-app-store.ts
 COPY scripts/qualification/seed-bundle.config.mjs ./scripts/qualification/seed-bundle.config.mjs
 RUN yarn --cwd packages/embeds/embed-core vite build --config ../../../scripts/qualification/seed-bundle.config.mjs
@@ -65,20 +73,20 @@ RUN yarn --cwd apps/web workspace @calcom/web run build
 RUN rm -rf node_modules/.cache apps/web/.next/cache
 
 # This stage runs on the target platform because no Docker stage pins a host
-# platform. It keeps only the declared production closure needed by the
-# traced web server and the explicit Prisma/seed maintenance commands.
+# platform. Next standalone already contains the traced serving graph, so this
+# separate closure is limited to the Prisma/seed maintenance commands.
 FROM builder AS runtime-deps
 
-RUN yarn workspaces focus @calcom/web --production
+RUN yarn workspaces focus @calcom/prisma --production
 RUN find node_modules -depth -type d \( \
-      -path '*/@depot' -o -path '*/trigger.dev' -o -path '*/@esbuild' -o \
+      -path '*/@depot' -o -path '*/@trigger.dev' -o -path '*/@esbuild' -o \
       -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \
       -path '*/@playwright' \
     \) -exec rm -rf {} + \
   && test -x node_modules/.bin/prisma \
   && test -x node_modules/.bin/ts-node \
   && ! find node_modules -type d \( \
-      -path '*/@depot' -o -path '*/trigger.dev' -o -path '*/@esbuild' -o \
+      -path '*/@depot' -o -path '*/@trigger.dev' -o -path '*/@esbuild' -o \
       -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \
       -path '*/@playwright' \
     \) -print -quit | grep -q .
@@ -97,11 +105,34 @@ RUN command -v unzip \
   && ln -s ../../packages/prisma node_modules/@calcom/prisma \
   && test -f node_modules/@prisma/adapter-pg/node_modules/@prisma/driver-adapter-utils/dist/index.js
 
-FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS runner
+FROM node:24.19.0-trixie-slim@sha256:0711b541c1c33a8a530ac4f0d391baa9a15b3d804695b1b24a47daa5fb60e74d AS runner
 
 WORKDIR /calcom
 
-RUN command -v setpriv && command -v sed && command -v egrep && command -v find
+# The immutable upstream digest can predate fixes already published in Debian
+# stable. Apply only repository-supported security/stable updates, then remove
+# package-manager metadata from the final filesystem.
+RUN apt-get update \
+  && apt-get upgrade -y --no-install-recommends \
+  && rm -rf /var/lib/apt/lists/*
+
+# The serving and maintenance entrypoints execute Node and checked-in scripts
+# directly. Package managers and their large transitive trees are build-stage
+# tools, so remove them from the published image before adding the app closure.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-v* \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx \
+  && ! command -v npm \
+  && ! command -v npx \
+  && ! command -v yarn \
+  && ! command -v corepack \
+  && test "$(node --version)" = "v24.19.0" \
+  && . /etc/os-release \
+  && test "$VERSION_ID" = "13" \
+  && command -v setpriv \
+  && command -v sed \
+  && command -v egrep \
+  && command -v find
 
 # The standalone output has its traced workspace runtime tree. Only the focused
 # production external closure and the explicit Prisma maintenance source root are
@@ -124,7 +155,7 @@ RUN chmod +x scripts/replace-placeholder.sh scripts/qualification-entrypoint.sh 
 # node read/execute access. No runtime path is world-writable.
 RUN test -f /calcom/node_modules/@prisma/adapter-pg/node_modules/@prisma/driver-adapter-utils/dist/index.js \
   && find /calcom -depth -type d \( \
-      -path '*/@depot' -o -path '*/trigger.dev' -o -path '*/@esbuild' -o \
+      -path '*/@depot' -o -path '*/@trigger.dev' -o -path '*/@esbuild' -o \
       -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \
       -path '*/@playwright' \
     \) -exec rm -rf {} + \
@@ -132,7 +163,7 @@ RUN test -f /calcom/node_modules/@prisma/adapter-pg/node_modules/@prisma/driver-
   && find /calcom/apps/web/.next /calcom/apps/web/public -type d -exec chmod 0755 {} + \
   && find /calcom/apps/web/.next /calcom/apps/web/public -type f -exec chmod u=rwX,go=rX {} + \
   && ! find /calcom -type d \( \
-      -path '*/@depot' -o -path '*/trigger.dev' -o -path '*/@esbuild' -o \
+      -path '*/@depot' -o -path '*/@trigger.dev' -o -path '*/@esbuild' -o \
       -path '*/esbuild' -o -path '*/vite' -o -path '*/playwright' -o \
       -path '*/@playwright' \
     \) -print -quit | grep -q .
